@@ -45,3 +45,11 @@ Out of scope for v1: calendar, contacts, rules/filters, signatures, multi-device
 - **Time**: 2026-04-15T23:41:37Z
 - **Merge commit**: be3f6139faf3122f46c2d02985f69ab4f1a844ac
 
+
+## Sprint 02: Accounts & Mailboxes
+
+- **Status**: PASS
+- **Attempt**: 1
+- **Time**: 2026-04-15T23:58:33Z
+- **Merge commit**: e68716a91e99b1c70972220e8a92d472d60f2682
+
