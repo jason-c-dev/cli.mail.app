@@ -1,0 +1,325 @@
+{
+  "sprintNumber": 1,
+  "name": "Project Scaffolding & AppleScript Engine",
+  "theme": "Build the foundation — project structure, CLI skeleton, and the core AppleScript execution layer that everything else depends on.",
+  "features": ["AppleScript Engine (3.1)", "Output System partial (3.13)", "Testing Infrastructure partial (3.15)"],
+  "criteria": [
+    {
+      "id": "C-001",
+      "category": "project-structure",
+      "description": "pyproject.toml exists with project metadata (name='mailctl', python>=3.11), dependencies on typer and rich, and a [project.scripts] entry point mapping 'mailctl' to the app",
+      "testMethod": "file-inspection",
+      "testSteps": [
+        "Read pyproject.toml",
+        "Verify [project] has name = 'mailctl' and requires-python >= '3.11'",
+        "Verify dependencies include 'typer' and 'rich'",
+        "Verify [project.scripts] has mailctl entry point"
+      ],
+      "threshold": "All four checks pass"
+    },
+    {
+      "id": "C-002",
+      "category": "project-structure",
+      "description": "Project is installable via pip install -e . in a virtualenv and the 'mailctl' command becomes available on PATH",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Create and activate a virtualenv",
+        "Run pip install -e .",
+        "Run 'mailctl --help' and verify it produces output with exit code 0"
+      ],
+      "threshold": "mailctl --help exits 0 and prints usage info"
+    },
+    {
+      "id": "C-003",
+      "category": "project-structure",
+      "description": "Source code is organized under src/mailctl/ package with an __init__.py and a clear module structure",
+      "testMethod": "file-inspection",
+      "testSteps": [
+        "Verify src/mailctl/__init__.py exists",
+        "Verify src/mailctl/cli.py (or main.py) exists with the Typer app",
+        "Verify src/mailctl/applescript.py (or engine.py) exists for the AppleScript engine"
+      ],
+      "threshold": "Package structure is clean with separate modules for CLI and engine"
+    },
+    {
+      "id": "C-004",
+      "category": "project-structure",
+      "description": ".gitignore includes Python-standard entries (*.pyc, __pycache__, .venv, *.egg-info, dist, build)",
+      "testMethod": "file-inspection",
+      "testSteps": [
+        "Read .gitignore",
+        "Verify it contains entries for __pycache__, *.pyc, .venv, *.egg-info, dist, build"
+      ],
+      "threshold": "All standard Python entries present"
+    },
+    {
+      "id": "C-005",
+      "category": "cli-skeleton",
+      "description": "mailctl --version prints a version string and exits 0",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version'",
+        "Verify output contains a version number (e.g., '0.1.0')",
+        "Verify exit code is 0"
+      ],
+      "threshold": "Version output and exit code 0"
+    },
+    {
+      "id": "C-006",
+      "category": "cli-skeleton",
+      "description": "mailctl --help prints a well-structured help message showing available commands/groups",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --help'",
+        "Verify output includes the program description",
+        "Verify output lists available commands or command groups",
+        "Verify exit code is 0"
+      ],
+      "threshold": "Help text is present, structured, and informative"
+    },
+    {
+      "id": "C-007",
+      "category": "cli-skeleton",
+      "description": "Typer app is created with a callback that handles --version and --json global options. The app structure supports subcommand groups (accounts, mailboxes, messages, etc.) even if they are placeholder-only in this sprint",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Read the CLI module",
+        "Verify a Typer app is instantiated",
+        "Verify --version is handled via a callback",
+        "Verify the app structure supports adding subcommand groups"
+      ],
+      "threshold": "Typer app with callback and extensible group structure"
+    },
+    {
+      "id": "C-008",
+      "category": "applescript-engine",
+      "description": "All osascript subprocess calls go through a single function (single execution seam) so tests can mock one point",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Read the AppleScript engine module",
+        "Verify there is exactly one function that calls subprocess.run with osascript",
+        "Verify all other engine functions delegate to this single function",
+        "Grep the codebase for subprocess.run — it should only appear in the engine module"
+      ],
+      "threshold": "Single osascript execution seam confirmed"
+    },
+    {
+      "id": "C-009",
+      "category": "applescript-engine",
+      "description": "The engine function accepts an AppleScript string, executes it via 'osascript -e', and returns the stdout as a string on success",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Read the engine's execute function",
+        "Verify it calls subprocess.run with ['osascript', '-e', script]",
+        "Verify it captures stdout and returns it",
+        "Verify it uses text mode or decodes bytes"
+      ],
+      "threshold": "Function signature and implementation match specification"
+    },
+    {
+      "id": "C-010",
+      "category": "applescript-engine",
+      "description": "The engine supports multi-statement AppleScript execution (batching multiple operations in a single osascript call) to minimize process startup overhead",
+      "testMethod": "code-inspection-and-unit-test",
+      "testSteps": [
+        "Read the engine module",
+        "Verify the execute function can accept multi-line AppleScript strings",
+        "Check unit tests demonstrate multi-statement scripts executing correctly"
+      ],
+      "threshold": "Multi-statement scripts are supported and tested"
+    },
+    {
+      "id": "C-011",
+      "category": "applescript-engine",
+      "description": "The engine parses AppleScript return values: at minimum strings and comma-delimited lists into Python types (str, list)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run unit tests for the parser",
+        "Verify string return values are parsed to Python str",
+        "Verify list/record return values are parsed to Python list/dict"
+      ],
+      "threshold": "Parser handles strings and lists correctly"
+    },
+    {
+      "id": "C-012",
+      "category": "error-handling",
+      "description": "Engine raises a distinct AppleScriptError (or similar custom exception) when osascript fails, with the stderr message preserved",
+      "testMethod": "code-inspection-and-unit-test",
+      "testSteps": [
+        "Verify a custom exception class exists for AppleScript errors",
+        "Verify the engine raises it when osascript returns non-zero exit code",
+        "Verify the stderr output is available in the exception"
+      ],
+      "threshold": "Custom exception with stderr message on failure"
+    },
+    {
+      "id": "C-013",
+      "category": "error-handling",
+      "description": "Engine detects and categorizes 'Mail.app not running' errors into a specific error type or message that downstream code can handle",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run unit test that simulates osascript failing because Mail.app is not running",
+        "Verify the error is categorized as a 'not running' type (via exception subclass, error code, or message pattern)"
+      ],
+      "threshold": "Mail-not-running is distinguishable from generic errors"
+    },
+    {
+      "id": "C-014",
+      "category": "error-handling",
+      "description": "Engine detects and categorizes 'automation permission denied' errors into a specific error type that downstream code can handle",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run unit test that simulates osascript failing due to permission denial",
+        "Verify the error is categorized as a 'permission denied' type"
+      ],
+      "threshold": "Permission-denied is distinguishable from generic errors"
+    },
+    {
+      "id": "C-015",
+      "category": "error-handling",
+      "description": "Engine detects and categorizes generic AppleScript execution errors (syntax errors, runtime errors) with the original error message preserved",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run unit test that simulates an AppleScript syntax/runtime error",
+        "Verify the error includes the original AppleScript error message",
+        "Verify it is distinguishable from permission-denied and not-running errors"
+      ],
+      "threshold": "Script errors are categorized and preserve original message"
+    },
+    {
+      "id": "C-016",
+      "category": "error-handling",
+      "description": "Engine enforces a configurable timeout on osascript calls (default reasonable, e.g. 30s) and raises a timeout-specific error when exceeded",
+      "testMethod": "code-inspection-and-unit-test",
+      "testSteps": [
+        "Read the engine execute function",
+        "Verify subprocess.run is called with a timeout parameter",
+        "Verify a timeout results in a specific error type or message",
+        "Check unit test for timeout handling"
+      ],
+      "threshold": "Timeout is enforced and produces a clear error"
+    },
+    {
+      "id": "C-017",
+      "category": "error-handling",
+      "description": "CLI entry point catches AppleScript errors and prints user-friendly messages to stderr with appropriate exit codes (non-zero)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Verify there is error handling at the CLI level that catches engine exceptions",
+        "Verify errors are printed to stderr (not stdout)",
+        "Verify exit code is non-zero on error"
+      ],
+      "threshold": "Errors go to stderr with non-zero exit codes"
+    },
+    {
+      "id": "C-018",
+      "category": "testing",
+      "description": "pytest is configured in pyproject.toml with testpaths and markers for integration tests",
+      "testMethod": "file-inspection",
+      "testSteps": [
+        "Read pyproject.toml [tool.pytest.ini_options] section",
+        "Verify testpaths includes tests/",
+        "Verify markers include 'integration'"
+      ],
+      "threshold": "pytest config present with integration marker"
+    },
+    {
+      "id": "C-019",
+      "category": "testing",
+      "description": "A reusable mock fixture exists that intercepts osascript subprocess calls and allows tests to set canned responses or errors",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Read conftest.py or a fixtures module",
+        "Verify a pytest fixture exists that patches subprocess.run (or the engine's execute function)",
+        "Verify the fixture allows configuring return values and simulating errors"
+      ],
+      "threshold": "Mock fixture exists and is reusable"
+    },
+    {
+      "id": "C-020",
+      "category": "testing",
+      "description": "Unit tests exist for the AppleScript engine covering: successful execution, multi-statement scripts, error parsing, timeout, and all error categories",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run pytest for the engine test module",
+        "Verify tests cover: success case, multi-statement, mail-not-running error, permission-denied error, script error, timeout",
+        "Verify all tests pass"
+      ],
+      "threshold": "All engine unit tests pass with >= 6 distinct test cases"
+    },
+    {
+      "id": "C-021",
+      "category": "testing",
+      "description": "Unit tests exist for the CLI skeleton covering: --version output, --help output, and error display",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run pytest for CLI tests",
+        "Verify tests cover --version, --help, and error rendering",
+        "Verify all tests pass"
+      ],
+      "threshold": "All CLI skeleton tests pass with >= 3 distinct test cases"
+    },
+    {
+      "id": "C-022",
+      "category": "testing",
+      "description": "Full test suite runs successfully with 'pytest' from the project root and all tests pass",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from project root",
+        "Verify all tests pass (0 failures)",
+        "Verify no warnings about missing fixtures or imports"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-023",
+      "category": "testing",
+      "description": "Test directory structure is organized: tests/ at the project root, with tests/unit/ for unit tests and tests/integration/ for integration tests (even if integration is empty this sprint)",
+      "testMethod": "file-inspection",
+      "testSteps": [
+        "Verify tests/ directory exists",
+        "Verify tests/unit/ or tests/ contains unit test files",
+        "Verify tests/integration/ directory exists (may be empty or have a placeholder)"
+      ],
+      "threshold": "Test directories present and organized"
+    },
+    {
+      "id": "C-024",
+      "category": "output-foundation",
+      "description": "stderr is used for error messages and stdout is used for data output — this pattern is established in the CLI error handling",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Read CLI error handling code",
+        "Verify errors are written to stderr (e.g., via typer.echo to stderr, or rich.console with stderr=True)",
+        "Verify normal output goes to stdout"
+      ],
+      "threshold": "Clear stdout/stderr separation in code"
+    },
+    {
+      "id": "C-025",
+      "category": "output-foundation",
+      "description": "Exit codes follow the spec convention: 0 for success, 1 for general error, 2 for usage error",
+      "testMethod": "code-inspection-and-unit-test",
+      "testSteps": [
+        "Verify exit code constants or patterns in the codebase",
+        "Verify CLI raises SystemExit or uses typer.Exit with appropriate codes",
+        "Check tests verify exit codes"
+      ],
+      "threshold": "Exit code convention implemented and tested"
+    }
+  ],
+  "outOfScope": [
+    "Accounts list command (Sprint 2)",
+    "Mailboxes list command (Sprint 2)",
+    "Any message reading/listing commands (Sprint 3)",
+    "Rich table output formatting (Sprint 2 — only the foundation/console setup in this sprint)",
+    "--json flag implementation on commands (Sprint 2+)",
+    "--no-color flag (Sprint 2)",
+    "TTY detection for colour (Sprint 2)",
+    "Any compose/reply/forward/send functionality (Sprint 5+)",
+    "Shell completions (Sprint 10)",
+    "Doctor command (Sprint 9)",
+    "Integration tests that require Mail.app (Sprint 10)"
+  ],
+  "regressionSprints": []
+}
