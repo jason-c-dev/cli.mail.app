@@ -1,0 +1,166 @@
+{
+  "sprintNumber": 2,
+  "overallResult": "PASS",
+  "passCount": 25,
+  "failCount": 0,
+  "criteriaResults": [
+    {
+      "id": "C-026",
+      "result": "PASS",
+      "evidence": "CliRunner invocation of 'accounts list' with mock_osascript returning two-account canned data exits 0 and both account names (Work, Personal) visible in stdout. 28 account tests all pass."
+    },
+    {
+      "id": "C-027",
+      "result": "PASS",
+      "evidence": "build_accounts_script() generates AppleScript containing 'every account', 'name of acct', 'email addresses of acct', 'account type of acct', and 'enabled of acct'. All 5 AppleScript inspection tests pass."
+    },
+    {
+      "id": "C-028",
+      "result": "PASS",
+      "evidence": "ACCOUNTS_COLUMNS defines four ColumnDef entries: Account (name), Email (email), Type (type), Enabled (enabled). Tests verify all four values appear in table output for each account. Rich Table used with header_style='bold'."
+    },
+    {
+      "id": "C-029",
+      "result": "PASS",
+      "evidence": "Test test_json_flag_produces_valid_json parses stdout as JSON list. test_json_contains_all_fields verifies each object has name, email, type, enabled. test_json_values_correct verifies actual values match canned data."
+    },
+    {
+      "id": "C-030",
+      "result": "PASS",
+      "evidence": "mock_osascript.set_error('application isn't running') causes non-zero exit code. Error message rendered via handle_mail_error→render_error to stderr Console(stderr=True). Message includes 'Mail.app is not running'."
+    },
+    {
+      "id": "C-031",
+      "result": "PASS",
+      "evidence": "test_single_osascript_call asserts len(mock_osascript.calls) == 1 after invoking 'accounts list'. Single AppleScript uses 'repeat with acct in allAccts' to batch all accounts."
+    },
+    {
+      "id": "C-032",
+      "result": "PASS",
+      "evidence": "'mailboxes list' with mock data for 6 mailboxes across 2 accounts exits 0. INBOX, Sent, Drafts, Trash all visible in output."
+    },
+    {
+      "id": "C-033",
+      "result": "PASS",
+      "evidence": "MAILBOXES_COLUMNS includes: Account, Mailbox, Unread (unread_count, right-justified), Messages (message_count, right-justified). Tests verify unread count (5, 12) and message count (120, 300) visible."
+    },
+    {
+      "id": "C-034",
+      "result": "PASS",
+      "evidence": "'mailboxes list --account Work' filters correctly: only Work mailboxes (INBOX, Sent, Drafts) present. JSON output confirms all entries have account='Work'. Trash (Personal only) absent. test_filters_to_personal also passes."
+    },
+    {
+      "id": "C-035",
+      "result": "PASS",
+      "evidence": "Without --account, both 'Work' and 'Personal' appear in output. JSON output verifies every mailbox dict has an 'account' field identifying its account."
+    },
+    {
+      "id": "C-036",
+      "result": "PASS",
+      "evidence": "test_json_contains_all_fields verifies 6 mailbox objects each with: name, account, unread_count, message_count. test_json_values_correct confirms Work/INBOX has unread_count=5, message_count=120."
+    },
+    {
+      "id": "C-037",
+      "result": "PASS",
+      "evidence": "Implementation batches all accounts into a single osascript call (better than contract's 'one per account'). test_single_osascript_call_for_all: len(mock_osascript.calls) == 1. test_call_count_at_most_num_accounts also passes."
+    },
+    {
+      "id": "C-038",
+      "result": "PASS",
+      "evidence": "'mailboxes list --account NonExistent' exits with code != 0. Error message includes 'NonExistent' and lists known accounts. render_error writes to stderr via Console(stderr=True)."
+    },
+    {
+      "id": "C-039",
+      "result": "PASS",
+      "evidence": "src/mailctl/output.py contains render_output(), render_error(), handle_mail_error(), and ColumnDef dataclass. Both accounts.py and mailboxes.py import and delegate to this shared module. Supports table and JSON modes."
+    },
+    {
+      "id": "C-040",
+      "result": "PASS",
+      "evidence": "--json defined on main_callback (app.callback()) at cli.py:103-107, stored in ctx.obj['json']. Both commands check ctx.obj.get('json', False). Tests: 'mailctl --json accounts list' and 'mailctl --json mailboxes list' both produce valid JSON."
+    },
+    {
+      "id": "C-041",
+      "result": "PASS",
+      "evidence": "--no-color defined on main_callback at cli.py:108-111, stored in ctx.obj['no_color']. output.py line 78: Console(no_color=no_color). Rich Console auto-detects TTY for colour by default — no explicit isatty needed since Rich handles it natively."
+    },
+    {
+      "id": "C-042",
+      "result": "PASS",
+      "evidence": "Table() created with show_header=True, header_style='bold'. add_column uses max_width (30, 40, 25, etc.), no_wrap=True, overflow='ellipsis' on every column. Column headers are named descriptively (Account, Email, Type, Enabled, Mailbox, Unread, Messages)."
+    },
+    {
+      "id": "C-043",
+      "result": "PASS",
+      "evidence": "render_output uses Console() (stdout). render_error and handle_mail_error use Console(stderr=True). JSON uses sys.stdout.write(). Tests verify: success data on result.stdout, errors on result.stderr."
+    },
+    {
+      "id": "C-044",
+      "result": "PASS",
+      "evidence": "errors.py defines EXIT_SUCCESS=0, EXIT_GENERAL_ERROR=1, EXIT_USAGE_ERROR=2. Tests verify exit_code==0 on success, exit_code!=0 on error. Typer returns exit code 2 for bad usage by default."
+    },
+    {
+      "id": "C-045",
+      "result": "PASS",
+      "evidence": "test_accounts.py has 28 test cases across 8 test classes: multi-account success (6), AppleScript inspection (5), JSON output (4), error handling (3), batch assertion (2), stream separation (2), parsing (4), script generation (2). All pass."
+    },
+    {
+      "id": "C-046",
+      "result": "PASS",
+      "evidence": "test_mailboxes.py has 31 test cases across 9 test classes: success (5), all-accounts (2), account filter (3), JSON (4), errors (3), batch (3), stream separation (2), parsing (6), script generation (3). All pass."
+    },
+    {
+      "id": "C-047",
+      "result": "PASS",
+      "evidence": "pytest -v: 93 passed in 0.11s. Zero failures, zero errors. Sprint 1 tests (test_cli.py: 10 tests, test_engine.py: 24 tests) all still pass alongside Sprint 2 tests (test_accounts.py: 28, test_mailboxes.py: 31)."
+    },
+    {
+      "id": "C-048",
+      "result": "PASS",
+      "evidence": "'mailctl accounts --help' shows 'Manage Mail.app accounts.' with 'list' command. 'mailctl accounts list --help' shows 'List all configured Mail.app accounts.' with --json option. 'mailctl mailboxes list --help' shows description with --account and --json options."
+    },
+    {
+      "id": "C-049",
+      "result": "PASS",
+      "evidence": "src/mailctl/commands/accounts.py and src/mailctl/commands/mailboxes.py are separate modules. Each has clean layering: build_*_script() → fetch_*() using engine.run_applescript → parse_*_output() → render_output(). AppleScript generation not inline in command handlers."
+    },
+    {
+      "id": "C-050",
+      "result": "PASS",
+      "evidence": "'mailctl --version' outputs 'mailctl 0.1.0' with exit code 0. 'mailctl --help' lists accounts, mailboxes, and messages as available command groups."
+    }
+  ],
+  "regressionResults": {
+    "sprint1": {
+      "result": "PASS",
+      "evidence": "Full test suite (93 tests) passes including all 34 Sprint 1 tests (test_cli.py, test_engine.py). Project structure intact: pyproject.toml, src/mailctl/ package, tests/unit/, tests/integration/. subprocess.run only in engine.py (single seam preserved). --version and --help still work. pytest config and integration marker still in pyproject.toml."
+    }
+  },
+  "holisticScores": {
+    "functionality": {
+      "score": 10,
+      "notes": "All 25 criteria pass. Both accounts and mailboxes commands fully implemented with table/JSON output, error handling, filtering, batch AppleScript, and stream separation."
+    },
+    "codeQuality": {
+      "score": 9,
+      "notes": "Clean module separation (commands/, output.py, engine.py, errors.py). ColumnDef dataclass for table config. Shared output module avoids duplication. Docstrings on all public functions. One minor nit: accounts_list has a local --json option that shadows the global one — works fine via ctx.obj fallback but slightly redundant."
+    },
+    "testCoverage": {
+      "score": 10,
+      "notes": "93 tests, all passing. Thorough coverage: success paths, error paths, edge cases (empty input, single account), JSON validation, stream separation, batch call assertions, parsing, and script generation. Well-structured test classes with descriptive names mapping to contract criteria."
+    },
+    "errorHandling": {
+      "score": 9,
+      "notes": "Graceful handling of Mail.app not running, permission denied, timeout, and generic errors. Account-not-found lists known accounts. All errors to stderr with non-zero exit codes. handle_mail_error raises typer.Exit after rendering. Minor: if fetch_accounts() raises in accounts_list, the code falls through to render_output with an unbound 'data' variable — Python would raise UnboundLocalError, but typer.Exit in handle_mail_error prevents this in practice."
+    },
+    "cliDesign": {
+      "score": 9,
+      "notes": "Well-structured subcommand groups. --json works both globally and per-command. --account filter with clear error for unknown accounts. --no-color flag. Help text is informative and shows options. Rich table formatting with headers, alignment, and ellipsis truncation. Exit codes follow convention. Only missing shell completions (out of scope for this sprint)."
+    },
+    "documentation": {
+      "score": 8,
+      "notes": "Module-level docstrings explain architecture and design decisions. Function docstrings with Parameters/Returns/Raises sections. commands/__init__.py documents the separation pattern. No user-facing README updates for new commands yet, but help text serves as primary documentation."
+    }
+  },
+  "summary": "Sprint 2 is a clean PASS. All 25 criteria satisfied. Both 'accounts list' and 'mailboxes list' commands are fully implemented with Rich table output, --json support, error handling, --account filtering, batch AppleScript, and proper stdout/stderr separation. 93 tests pass with zero failures, including full Sprint 1 regression. Code is well-structured with clean module separation and a shared output system."
+}
