@@ -1,8 +1,9 @@
 """mailctl CLI entry point.
 
-Defines the Typer application with global options (--version, --json) and
-sets up the subcommand group structure. Error handling at this level catches
-AppleScript exceptions and renders them to stderr with appropriate exit codes.
+Defines the Typer application with global options (--version, --json, --no-color)
+and sets up the subcommand group structure. Command implementations live in
+``mailctl.commands.*`` modules; this file only handles wiring and top-level
+error handling.
 """
 
 from __future__ import annotations
@@ -41,8 +42,7 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 
-# Subcommand groups — placeholders wired up as the sprint plan progresses.
-# Each group is a Typer sub-application that will gain commands in later sprints.
+# Subcommand groups — each is a Typer sub-application with its own commands.
 accounts_app = typer.Typer(
     name="accounts",
     help="Manage Mail.app accounts.",
@@ -67,6 +67,17 @@ app.add_typer(messages_app, name="messages")
 
 
 # --------------------------------------------------------------------------- #
+# Register commands from command modules
+# --------------------------------------------------------------------------- #
+
+from mailctl.commands.accounts import register as register_accounts
+from mailctl.commands.mailboxes import register as register_mailboxes
+
+register_accounts(accounts_app)
+register_mailboxes(mailboxes_app)
+
+
+# --------------------------------------------------------------------------- #
 # Version callback
 # --------------------------------------------------------------------------- #
 
@@ -80,6 +91,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main_callback(
+    ctx: typer.Context,
     version: Optional[bool] = typer.Option(
         None,
         "--version",
@@ -93,9 +105,16 @@ def main_callback(
         "--json",
         help="Output results as JSON.",
     ),
+    no_color: Optional[bool] = typer.Option(
+        None,
+        "--no-color",
+        help="Disable colour/style output.",
+    ),
 ) -> None:
     """mailctl — command-line interface for Apple Mail.app."""
-    pass
+    ctx.ensure_object(dict)
+    ctx.obj["json"] = json_output or False
+    ctx.obj["no_color"] = no_color or False
 
 
 # --------------------------------------------------------------------------- #
