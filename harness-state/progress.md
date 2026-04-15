@@ -37,3 +37,11 @@ Out of scope for v1: calendar, contacts, rules/filters, signatures, multi-device
 
 ---
 
+
+## Sprint 01: Project Scaffolding & AppleScript Engine
+
+- **Status**: PASS
+- **Attempt**: 1
+- **Time**: 2026-04-15T23:41:37Z
+- **Merge commit**: be3f6139faf3122f46c2d02985f69ab4f1a844ac
+
