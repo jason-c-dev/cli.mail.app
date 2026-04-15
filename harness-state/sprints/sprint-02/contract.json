@@ -1,0 +1,319 @@
+{
+  "sprintNumber": 2,
+  "name": "Accounts & Mailboxes",
+  "theme": "First real commands — list accounts and mailboxes with full output formatting.",
+  "features": ["Accounts List (3.2)", "Mailboxes List (3.3)", "Output System (3.13)"],
+  "criteria": [
+    {
+      "id": "C-026",
+      "category": "accounts-command",
+      "description": "'mailctl accounts list' command exists and runs without error when given mocked AppleScript output representing two accounts",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list' via CliRunner with mock_osascript returning canned output for two accounts",
+        "Verify exit code is 0",
+        "Verify output contains both account names"
+      ],
+      "threshold": "Command succeeds with exit code 0 and both accounts visible in output"
+    },
+    {
+      "id": "C-027",
+      "category": "accounts-command",
+      "description": "'mailctl accounts list' generates AppleScript that queries Mail.app for all accounts, retrieving name, email address(es), account type, and enabled state",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list' with mock_osascript",
+        "Inspect the AppleScript string passed to osascript",
+        "Verify it queries 'every account' or equivalent Mail.app objects",
+        "Verify it retrieves name, email addresses, account type, and enabled state"
+      ],
+      "threshold": "AppleScript queries all four account properties"
+    },
+    {
+      "id": "C-028",
+      "category": "accounts-command",
+      "description": "'mailctl accounts list' displays a Rich table with columns for: account name, email address(es), account type (IMAP/Exchange/iCloud/POP), and enabled/disabled status",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list' via CliRunner with mocked account data",
+        "Verify output contains the account name, email, type, and enabled state for each account",
+        "Verify the output is formatted as a table (contains column separators or alignment)"
+      ],
+      "threshold": "All four columns present in table output with correct data"
+    },
+    {
+      "id": "C-029",
+      "category": "accounts-command",
+      "description": "'mailctl accounts list --json' outputs valid JSON to stdout containing an array of account objects with name, email, type, and enabled fields",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list --json' via CliRunner with mocked data",
+        "Parse stdout as JSON",
+        "Verify it is a list of objects",
+        "Verify each object has name, email/emails, type, and enabled fields"
+      ],
+      "threshold": "Valid JSON array with all required fields per account"
+    },
+    {
+      "id": "C-030",
+      "category": "accounts-command",
+      "description": "'mailctl accounts list' shows a graceful error message when Mail.app is not running and exits with non-zero code",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list' with mock_osascript configured to raise MailNotRunningError",
+        "Verify exit code is non-zero",
+        "Verify stderr contains a user-friendly error message mentioning Mail.app"
+      ],
+      "threshold": "Non-zero exit code and helpful error message on stderr"
+    },
+    {
+      "id": "C-031",
+      "category": "accounts-command",
+      "description": "'mailctl accounts list' batches the account query into a single osascript call (not one per account)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list' with mock_osascript returning data for multiple accounts",
+        "Inspect mock_osascript.calls to count how many osascript invocations were made",
+        "Verify exactly one osascript call was made"
+      ],
+      "threshold": "Exactly one osascript call for the entire accounts list"
+    },
+    {
+      "id": "C-032",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list' command exists and runs without error when given mocked AppleScript output representing mailboxes across accounts",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list' via CliRunner with mock_osascript returning canned mailbox data",
+        "Verify exit code is 0",
+        "Verify output contains mailbox names"
+      ],
+      "threshold": "Command succeeds with exit code 0 and mailbox data visible"
+    },
+    {
+      "id": "C-033",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list' displays mailbox name, unread count, and total message count in a Rich table",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list' with mocked data including mailbox name, unread count, and message count",
+        "Verify all three data points are visible in the output for each mailbox"
+      ],
+      "threshold": "Table shows name, unread count, and message count per mailbox"
+    },
+    {
+      "id": "C-034",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list --account <name>' filters mailboxes to only the specified account",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list --account Work' with mock returning mailboxes for Work and Personal accounts",
+        "Verify only Work account mailboxes appear in output",
+        "Verify Personal account mailboxes are absent"
+      ],
+      "threshold": "Only the targeted account's mailboxes appear"
+    },
+    {
+      "id": "C-035",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list' without --account lists mailboxes from all accounts, with account context visible per mailbox",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list' with mock returning mailboxes from two accounts",
+        "Verify mailboxes from both accounts appear in the output",
+        "Verify each mailbox row identifies which account it belongs to"
+      ],
+      "threshold": "All accounts' mailboxes listed with account attribution"
+    },
+    {
+      "id": "C-036",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list --json' outputs valid JSON containing mailbox objects with name, account, unread_count, and message_count fields",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list --json' with mocked data",
+        "Parse stdout as JSON",
+        "Verify it is a list of objects with name, account, unread_count, and message_count"
+      ],
+      "threshold": "Valid JSON array with all required fields per mailbox"
+    },
+    {
+      "id": "C-037",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list' batches AppleScript to fetch all mailbox data in one osascript call per account (not one call per mailbox)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list' with mock returning data for two accounts with multiple mailboxes each",
+        "Count the number of osascript calls via mock_osascript.calls",
+        "Verify the number of calls is at most the number of accounts (or fewer if batched into a single call)"
+      ],
+      "threshold": "At most one osascript call per account, not per mailbox"
+    },
+    {
+      "id": "C-038",
+      "category": "mailboxes-command",
+      "description": "'mailctl mailboxes list --account NonExistent' produces a clear error when the specified account does not exist",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl mailboxes list --account NonExistent' with mock returning account data that does not include 'NonExistent'",
+        "Verify exit code is non-zero",
+        "Verify error message mentions the account was not found"
+      ],
+      "threshold": "Non-zero exit code and error message naming the unknown account"
+    },
+    {
+      "id": "C-039",
+      "category": "output-system",
+      "description": "A shared output formatting module/function exists that renders data as either a Rich table or JSON based on the --json flag, usable by any command",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect the source code for a reusable output module or function",
+        "Verify both accounts and mailboxes commands delegate to the same output formatting code",
+        "Verify it supports both Rich table and JSON modes"
+      ],
+      "threshold": "Shared output code used by both commands, supporting table and JSON"
+    },
+    {
+      "id": "C-040",
+      "category": "output-system",
+      "description": "The --json flag is a global option (on the main Typer callback) that works on both 'accounts list' and 'mailboxes list', producing valid JSON to stdout",
+      "testMethod": "code-inspection-and-unit-test",
+      "testSteps": [
+        "Verify --json is defined as a global option on the Typer app callback",
+        "Run 'mailctl accounts list --json' and verify valid JSON output",
+        "Run 'mailctl mailboxes list --json' and verify valid JSON output"
+      ],
+      "threshold": "--json works globally across both commands"
+    },
+    {
+      "id": "C-041",
+      "category": "output-system",
+      "description": "The --no-color flag disables Rich colour/style output, and TTY detection automatically disables colour when stdout is not a terminal",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Verify --no-color flag exists on the CLI",
+        "Verify the Rich Console is configured with force_terminal or no_color based on the flag",
+        "Verify TTY detection logic exists (e.g. Console auto-detection or explicit isatty check)"
+      ],
+      "threshold": "--no-color flag works and TTY detection is implemented"
+    },
+    {
+      "id": "C-042",
+      "category": "output-system",
+      "description": "Rich table output uses clean formatting: column headers, appropriate alignment, and truncation/ellipsis for long field values rather than wrapping",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Read the table formatting code",
+        "Verify tables have named column headers",
+        "Verify long field values are truncated with ellipsis (max_width, overflow, or no_wrap settings on columns)"
+      ],
+      "threshold": "Tables have headers, alignment, and truncation handling"
+    },
+    {
+      "id": "C-043",
+      "category": "output-system",
+      "description": "Error messages go to stderr and data output goes to stdout — verifiable by capturing streams separately in tests",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run a command that succeeds and verify data is on stdout (not stderr)",
+        "Run a command that fails and verify error message is on stderr (not stdout)",
+        "Confirm clean separation: success outputs nothing to stderr, errors output nothing meaningful to stdout"
+      ],
+      "threshold": "Stdout for data, stderr for errors, with clean separation"
+    },
+    {
+      "id": "C-044",
+      "category": "output-system",
+      "description": "Exit codes follow convention: 0 for success, 1 for general errors (Mail.app not running, permission denied), 2 for usage errors (bad arguments)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl accounts list' successfully and verify exit code 0",
+        "Run 'mailctl accounts list' with Mail.app error and verify exit code 1",
+        "Run a command with invalid arguments and verify exit code 2 (or Typer's default for bad usage)"
+      ],
+      "threshold": "Exit code 0 on success, non-zero on failure"
+    },
+    {
+      "id": "C-045",
+      "category": "testing",
+      "description": "Unit tests exist for 'accounts list' covering: success with multiple accounts, success with single account, --json output, Mail.app not running error, and single osascript call assertion",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run pytest for the accounts test module",
+        "Verify tests exist for: multi-account success, single account, --json, error handling, batch call count",
+        "Verify all tests pass"
+      ],
+      "threshold": "At least 5 distinct test cases for accounts, all passing"
+    },
+    {
+      "id": "C-046",
+      "category": "testing",
+      "description": "Unit tests exist for 'mailboxes list' covering: success with multiple accounts, --account filter, --json output, account not found error, and batch osascript call assertion",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run pytest for the mailboxes test module",
+        "Verify tests exist for: multi-account mailboxes, account filter, --json, error handling, batch call count",
+        "Verify all tests pass"
+      ],
+      "threshold": "At least 5 distinct test cases for mailboxes, all passing"
+    },
+    {
+      "id": "C-047",
+      "category": "testing",
+      "description": "Full test suite (pytest from project root) passes with zero failures, including all Sprint 1 and Sprint 2 tests",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from the project root",
+        "Verify all tests pass (0 failures, 0 errors)",
+        "Verify Sprint 1 engine tests still pass (regression check)"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-048",
+      "category": "cli-help",
+      "description": "'mailctl accounts --help' and 'mailctl mailboxes --help' produce useful help text, and 'mailctl accounts list --help' describes the command's purpose and available options",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl accounts --help' and verify it mentions account-related commands",
+        "Run 'mailctl accounts list --help' and verify it describes the list command and its options (--json)",
+        "Run 'mailctl mailboxes list --help' and verify it describes the command and the --account option"
+      ],
+      "threshold": "All help outputs are informative and mention key options"
+    },
+    {
+      "id": "C-049",
+      "category": "code-quality",
+      "description": "Accounts and mailboxes commands are in separate modules (not all in cli.py) with a clean separation between command handlers, AppleScript generation, and output formatting",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Verify accounts command logic is in its own module (e.g., src/mailctl/accounts.py or src/mailctl/commands/accounts.py)",
+        "Verify mailboxes command logic is in its own module",
+        "Verify AppleScript generation for accounts/mailboxes is not inline in the command handler — it either uses a helper function or the engine module"
+      ],
+      "threshold": "Commands in separate modules with clean layering"
+    },
+    {
+      "id": "C-050",
+      "category": "regression",
+      "description": "'mailctl --version' still prints the version string and exits 0, and 'mailctl --help' still lists command groups including accounts and mailboxes",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version' and verify it prints version and exits 0",
+        "Run 'mailctl --help' and verify it lists accounts and mailboxes as available command groups"
+      ],
+      "threshold": "Sprint 1 CLI skeleton still works, with new command groups visible"
+    }
+  ],
+  "outOfScope": [
+    "Message listing/show/search commands (Sprint 3-4)",
+    "Compose/reply/forward functionality (Sprint 5-6)",
+    "Message mark/move/delete operations (Sprint 7-8)",
+    "Doctor command (Sprint 9)",
+    "Shell completions (Sprint 10)",
+    "Integration tests against real Mail.app (Sprint 10)",
+    "Nested/hierarchical mailbox path display (nice-to-have but not required — flat name is sufficient for this sprint)",
+    "Account-specific email sending configuration"
+  ],
+  "regressionSprints": [1]
+}
