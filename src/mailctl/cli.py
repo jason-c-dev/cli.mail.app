@@ -61,9 +61,16 @@ messages_app = typer.Typer(
     no_args_is_help=True,
 )
 
+drafts_app = typer.Typer(
+    name="drafts",
+    help="Manage Mail.app drafts.",
+    no_args_is_help=True,
+)
+
 app.add_typer(accounts_app, name="accounts")
 app.add_typer(mailboxes_app, name="mailboxes")
 app.add_typer(messages_app, name="messages")
+app.add_typer(drafts_app, name="drafts")
 
 
 # --------------------------------------------------------------------------- #
@@ -72,6 +79,8 @@ app.add_typer(messages_app, name="messages")
 
 from mailctl.commands.accounts import register as register_accounts
 from mailctl.commands.compose import register as register_compose
+from mailctl.commands.delete import register as register_delete
+from mailctl.commands.drafts import register as register_drafts
 from mailctl.commands.mailboxes import register as register_mailboxes
 from mailctl.commands.mark_move import register as register_mark_move
 from mailctl.commands.messages import register as register_messages
@@ -81,8 +90,10 @@ register_accounts(accounts_app)
 register_mailboxes(mailboxes_app)
 register_messages(messages_app)
 register_mark_move(messages_app)
+register_delete(messages_app)
 register_compose(app)
 register_reply_forward(app)
+register_drafts(drafts_app)
 
 
 # --------------------------------------------------------------------------- #
