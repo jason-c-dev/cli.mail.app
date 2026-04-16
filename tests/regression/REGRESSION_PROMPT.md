@@ -27,13 +27,13 @@ You are a senior test engineer. This is a **dual regression test**:
   context?
 
 You are testing the skill too, so **use only the skill** as your
-reference. Do not open the repo's `README.md`, `CLAUDE.md`,
-`docs/product-spec.md`, or the `src/` tree to fill gaps. If the skill
-doesn't tell you how to do something, that's a finding — record it and
-either (a) try your best guess and mark the result as "skill-inferred"
-or (b) skip the test and mark it as "skill-gap — blocked". Do not
-shell out to `osascript` or reach into Mail.app's SQLite directly.
-You are testing what a normal skill-using Claude instance can do.
+reference. Do not open the repo's `README.md`, `docs/product-spec.md`,
+or the `src/` tree to fill gaps. If the skill doesn't tell you how to
+do something, that's a finding — record it and either (a) try your
+best guess and mark the result as "skill-inferred" or (b) skip the
+test and mark it as "skill-gap — blocked". Do not shell out to
+`osascript` or reach into Mail.app's SQLite directly. You are testing
+what a normal skill-using Claude instance can do.
 
 ## Absolute safety rules
 

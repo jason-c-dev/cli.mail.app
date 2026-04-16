@@ -1,8 +1,7 @@
 """Compose command — create Mail.app drafts, or (opt-in) send real messages.
 
 This module implements the ironclad draft-first safety model described in
-the product spec and CLAUDE.md.  The rules are enforced *in code*, not by
-policy:
+docs/product-spec.md.  The rules are enforced *in code*, not by policy:
 
 1. ``--dangerously-send`` is the **only** way to produce AppleScript that
    includes the ``send`` verb.  There is no environment variable, no

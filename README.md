@@ -511,28 +511,22 @@ introduces a send-capable path must:
 - Default to "cancel" at confirmation prompts
 - Have corresponding unit tests asserting the bypass-resistance
 
-### Two sets of instructions for Claude — which to use
+### Using mailctl with Claude Code
 
-This repo ships two distinct Claude Code integration files. They serve
-different audiences:
+The supported Claude Code integration is the skill at
+[`skills/mailctl/SKILL.md`](skills/mailctl/SKILL.md). Copy the
+`skills/mailctl/` directory into a project's `.claude/skills/` (or
+your user-level `~/.claude/skills/`) and Claude will load it on demand
+when a user asks to read or send email. The skill documents every
+command, the safety model, common workflows, and gotchas — enough for
+a fresh Claude instance to wield `mailctl` competently without needing
+this repo's source tree.
 
-- **`CLAUDE.md`** (at the repo root) — **development-only**. These are
-  guardrails for Claude instances *working on* `mailctl` itself: the
-  planner, generator, and evaluator that built the tool, and anyone
-  using Claude to modify it. Its rules are about not sending real
-  email during development, preferring real-system integration tests
-  over mocks, etc. If you're a user of `mailctl`, ignore it.
-- **`skills/mailctl/SKILL.md`** — **for end-user Claude Code sessions**.
-  Copy the `skills/mailctl/` directory into a project's `.claude/skills/`
-  (or your user-level `~/.claude/skills/`) and Claude will load it on
-  demand when a user asks to read or send email. The skill documents
-  every command, the safety model, common workflows, and gotchas —
-  everything a fresh Claude instance needs to wield `mailctl`
-  competently, without needing this repo's source tree.
-
-Do not rely on `CLAUDE.md` as the Claude-Code integration for normal
-use — it's a scoped instruction set for modifying the tool, not for
-operating it.
+There is deliberately no `CLAUDE.md` at the repo root. If you're
+using Claude Code to modify `mailctl` itself, the README plus
+`docs/product-spec.md` and the existing test suite are the reference
+points — the safety-model tests under `tests/unit/test_safety_model.py`
+make bypass-regressions hard to miss.
 
 ## License
 
