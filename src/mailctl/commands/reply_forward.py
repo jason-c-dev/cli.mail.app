@@ -57,6 +57,49 @@ from mailctl.commands.compose import (
 
 
 # --------------------------------------------------------------------------- #
+# AppleScript generation — fetch user's own email addresses
+# --------------------------------------------------------------------------- #
+
+def build_user_emails_script() -> str:
+    """Return AppleScript that lists all email addresses across accounts.
+
+    Output format: one email address per line.
+    This is a read-only operation — safe to execute anytime.
+    """
+    return '''\
+tell application "Mail"
+    set output to ""
+    set accts to every account
+    repeat with acct in accts
+        set addrs to email addresses of acct
+        repeat with addr in addrs
+            if output is not "" then set output to output & linefeed
+            set output to output & (addr as string)
+        end repeat
+    end repeat
+    return output
+end tell'''
+
+
+def parse_user_emails_output(raw: str) -> list[str]:
+    """Parse the newline-delimited email-addresses output into a list."""
+    if not raw.strip():
+        return []
+    return [line.strip().lower() for line in raw.strip().split("\n") if line.strip()]
+
+
+def fetch_user_emails() -> list[str]:
+    """Return the list of the user's own email addresses from Mail.app.
+
+    This is a read-only operation.  Used to exclude the user's own
+    address from reply-all recipient lists.
+    """
+    script = build_user_emails_script()
+    raw = run_applescript(script)
+    return parse_user_emails_output(raw)
+
+
+# --------------------------------------------------------------------------- #
 # AppleScript generation — fetch original message for reply / forward
 # --------------------------------------------------------------------------- #
 
@@ -668,9 +711,32 @@ def register(app: typer.Typer) -> None:
             return  # unreachable
 
         # --- Compute recipients ------------------------------------------
+        # For reply-all, fetch the user's own email addresses to exclude
+        # them from the recipient list.
+        user_email = None
+        if reply_all:
+            try:
+                user_emails = fetch_user_emails()
+                # Find the user's address that appears in the original To list
+                original_to_lower = [
+                    a.strip().lower()
+                    for a in original.get("to", "").split(",")
+                    if a.strip()
+                ]
+                for ue in user_emails:
+                    if ue in original_to_lower:
+                        user_email = ue
+                        break
+                # If no match, use the first user email as fallback
+                if not user_email and user_emails:
+                    user_email = user_emails[0]
+            except AppleScriptError:
+                pass  # Best-effort; if we can't get emails, proceed without
+
         to_list, cc_list = _compute_reply_recipients(
             original,
             reply_all=reply_all,
+            user_email=user_email,
         )
 
         # --- Build full body with quoted original ------------------------
