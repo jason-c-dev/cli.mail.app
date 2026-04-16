@@ -92,6 +92,36 @@
         "C-078"
       ],
       "contractPath": "sprints/sprint-03/contract.json"
+    },
+    "4": {
+      "criteria": [
+        "C-081",
+        "C-082",
+        "C-083",
+        "C-084",
+        "C-085",
+        "C-086",
+        "C-087",
+        "C-088",
+        "C-089",
+        "C-090",
+        "C-091",
+        "C-092",
+        "C-093",
+        "C-094",
+        "C-095",
+        "C-096",
+        "C-097",
+        "C-098",
+        "C-099",
+        "C-100",
+        "C-101",
+        "C-102",
+        "C-103",
+        "C-104",
+        "C-105"
+      ],
+      "contractPath": "sprints/sprint-04/contract.json"
     }
   },
   "lastFullRun": null

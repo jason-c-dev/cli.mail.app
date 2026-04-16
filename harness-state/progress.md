@@ -61,3 +61,11 @@ Out of scope for v1: calendar, contacts, rules/filters, signatures, multi-device
 - **Time**: 2026-04-16T00:13:50Z
 - **Merge commit**: c9a4ece96630ebcb444ab932a3f8bc59cc502966
 
+
+## Sprint 04: Cross-Account Search
+
+- **Status**: PASS
+- **Attempt**: 1
+- **Time**: 2026-04-16T00:28:41Z
+- **Merge commit**: 22d70db14cac75bf9636bcf9a0f89dfed2333b4d
+
