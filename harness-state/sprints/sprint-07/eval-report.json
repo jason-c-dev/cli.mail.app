@@ -1,0 +1,185 @@
+{
+  "sprintNumber": 7,
+  "overallResult": "PASS",
+  "passCount": 28,
+  "failCount": 0,
+  "criteriaResults": [
+    {
+      "id": "C-161",
+      "result": "PASS",
+      "evidence": "TestMarkRead: 3 tests pass. 'messages mark 12345 --read' exits 0, invokes osascript, and generated AppleScript contains 'set read status of msg to true'."
+    },
+    {
+      "id": "C-162",
+      "result": "PASS",
+      "evidence": "TestMarkUnread: 2 tests pass. 'messages mark 12345 --unread' exits 0 and generated AppleScript contains 'set read status of msg to false'."
+    },
+    {
+      "id": "C-163",
+      "result": "PASS",
+      "evidence": "TestMarkFlagged: 2 tests pass. 'messages mark 12345 --flagged' exits 0 and generated AppleScript contains 'set flagged status of msg to true'."
+    },
+    {
+      "id": "C-164",
+      "result": "PASS",
+      "evidence": "TestMarkUnflagged: 2 tests pass. 'messages mark 12345 --unflagged' exits 0 and generated AppleScript contains 'set flagged status of msg to false'."
+    },
+    {
+      "id": "C-165",
+      "result": "PASS",
+      "evidence": "TestMarkCombined: 3 tests pass. '--read --flagged' sets both properties in one AppleScript call; '--unread --unflagged' likewise. Single osascript invocation confirmed."
+    },
+    {
+      "id": "C-166",
+      "result": "PASS",
+      "evidence": "TestMarkNoFlags: 2 tests pass. 'messages mark 12345' with no flags exits non-zero and output mentions 'flag' or '--read'."
+    },
+    {
+      "id": "C-167",
+      "result": "PASS",
+      "evidence": "TestMarkContradictory: 2 tests pass. '--read --unread' exits non-zero with 'contradict' in output; '--flagged --unflagged' likewise."
+    },
+    {
+      "id": "C-168",
+      "result": "PASS",
+      "evidence": "TestMarkBulk: 3 tests pass. 'messages mark 100 200 300 --read' exits 0, all three IDs present in generated AppleScript, batched into 1 osascript call."
+    },
+    {
+      "id": "C-169",
+      "result": "PASS",
+      "evidence": "TestMarkAccount: 'messages mark 12345 --read --account Work' exits 0. Generated AppleScript contains 'account \"Work\"'."
+    },
+    {
+      "id": "C-170",
+      "result": "PASS",
+      "evidence": "TestMoveBasic: 3 tests pass. 'messages move 12345 --to Archive' exits 0, osascript invoked, script contains '\"Archive\"' and 'move msg to destMailbox'."
+    },
+    {
+      "id": "C-171",
+      "result": "PASS",
+      "evidence": "TestMoveAccount: 'messages move 12345 --to Archive --account Work' exits 0. Script contains 'account \"Work\"' and 'mailbox \"Archive\" of account \"Work\"' confirming both source and target are scoped."
+    },
+    {
+      "id": "C-172",
+      "result": "PASS",
+      "evidence": "TestMoveMissingTo: 2 tests pass. 'messages move 12345' without --to exits non-zero and output mentions '--to'."
+    },
+    {
+      "id": "C-173",
+      "result": "PASS",
+      "evidence": "TestMoveBulk: 3 tests pass. 'messages move 100 200 300 --to Archive' exits 0, all three IDs in script, batched into 1 osascript call."
+    },
+    {
+      "id": "C-174",
+      "result": "PASS",
+      "evidence": "TestMarkDryRun: 3 tests pass. '--dry-run' exits 0, output mentions message ID and flags, and zero osascript calls made."
+    },
+    {
+      "id": "C-175",
+      "result": "PASS",
+      "evidence": "TestMoveDryRun: 3 tests pass. '--dry-run' exits 0, output mentions message ID and 'Archive', and zero osascript calls made."
+    },
+    {
+      "id": "C-176",
+      "result": "PASS",
+      "evidence": "TestDryRunMultipleIds: 2 tests pass. Dry-run on mark with IDs 100, 200, 300 lists all three; dry-run on move lists all three IDs and target mailbox 'Trash'."
+    },
+    {
+      "id": "C-177",
+      "result": "PASS",
+      "evidence": "TestHumanOutput: 2 tests pass. Mark outputs 'Marked message(s) 12345 as read.'; move outputs 'Moved message(s) 12345 to Archive.'"
+    },
+    {
+      "id": "C-178",
+      "result": "PASS",
+      "evidence": "TestJsonOutput: 2 tests pass. Mark --json emits valid JSON with action='mark', message_ids=['12345'], changes.read=true, changes.flagged=true. Move --json emits action='move', message_ids=['12345'], target_mailbox='Archive'."
+    },
+    {
+      "id": "C-179",
+      "result": "PASS",
+      "evidence": "TestErrorHandlingNonexistent: 2 tests pass. Mock script error causes non-zero exit for both mark and move."
+    },
+    {
+      "id": "C-180",
+      "result": "PASS",
+      "evidence": "TestErrorHandlingMailNotRunning: 2 tests pass. Mock 'application isn't running' error causes non-zero exit and output contains 'mail' for both mark and move. Uses handle_mail_error from mailctl.output — same as all prior commands."
+    },
+    {
+      "id": "C-181",
+      "result": "PASS",
+      "evidence": "TestHelpOutput: 3 tests pass. 'messages --help' lists 'mark', 'move', and existing subcommands 'list', 'show', 'search'."
+    },
+    {
+      "id": "C-182",
+      "result": "PASS",
+      "evidence": "TestMarkHelp: 'messages mark --help' output contains MESSAGE_IDS, --read, --unread, --flagged, --unflagged, --account, --dry-run, --json."
+    },
+    {
+      "id": "C-183",
+      "result": "PASS",
+      "evidence": "TestMoveHelp: 'messages move --help' output contains MESSAGE_IDS, --to, --account, --dry-run, --json."
+    },
+    {
+      "id": "C-184",
+      "result": "PASS",
+      "evidence": "Code inspection: mark_move.py imports run_applescript from engine, handle_mail_error and render_error from output. Follows build/perform/register pattern with build_mark_messages_script(), build_move_messages_script(), perform_mark(), perform_move(), and register(). No send verb in generated AppleScript. 8 architecture tests pass."
+    },
+    {
+      "id": "C-185",
+      "result": "PASS",
+      "evidence": "24 mark-related tests covering: --read (3), --unread (2), --flagged (2), --unflagged (2), combined (3), no-flags error (2), contradictory flags (2), bulk (3), --account (1), --dry-run (3), --json (1 in TestJsonOutput). Well above the 11-test minimum. All pass."
+    },
+    {
+      "id": "C-186",
+      "result": "PASS",
+      "evidence": "13 move-related tests covering: single ID (3), bulk (3), --account (1), --dry-run (3), --json (1 in TestJsonOutput), missing --to error (2), script error handling (1 in TestErrorHandlingNonexistent). Well above the 7-test minimum. All pass."
+    },
+    {
+      "id": "C-187",
+      "result": "PASS",
+      "evidence": "Full pytest run: 432 tests pass, 0 failures, 0 errors, exit code 0. Runtime: 0.40s. Includes all Sprint 1-6 tests and 63 new Sprint 7 tests."
+    },
+    {
+      "id": "C-188",
+      "result": "PASS",
+      "evidence": "TestRegression (5 tests): --version works, --help lists all command groups (accounts, mailboxes, messages, compose, reply, forward), accounts/mailboxes/messages --help all exit 0. Full Sprint 1-6 test suite passes (369 pre-existing tests)."
+    }
+  ],
+  "regressionResults": {
+    "sprints": [1, 2, 3, 4, 5, 6],
+    "result": "PASS",
+    "evidence": "All 432 tests pass (0 failures). Sprint 1 (accounts, engine, output): 25 tests pass. Sprint 2 (mailboxes): 25 tests pass. Sprint 3 (messages list/show): 28 tests pass. Sprint 4 (search): 25 tests pass. Sprint 5 (compose, safety model): covered in test_compose.py and test_safety_model.py. Sprint 6 (reply/forward): covered in test_reply_forward.py. No regressions detected."
+  },
+  "holisticScores": {
+    "cliUX": {
+      "score": 9,
+      "notes": "Excellent CLI ergonomics: intuitive subcommand structure (messages mark/move), comprehensive --help output, consistent --json/--dry-run/--account flags matching prior commands, clear validation errors for missing/contradictory flags."
+    },
+    "correctness": {
+      "score": 10,
+      "notes": "All 28 criteria pass. All 432 tests pass. AppleScript generation is correct for all flag combinations, bulk operations, and account scoping. Error handling properly classifies mail-not-running and script errors."
+    },
+    "codeQuality": {
+      "score": 9,
+      "notes": "Clean build/perform/register architecture matching prior sprints. Good separation of concerns: AppleScript generation, orchestration, output rendering, and Typer command registration are distinct layers. Uses shared utilities (handle_mail_error, render_error, run_applescript). Well-documented module with clear docstrings."
+    },
+    "testCoverage": {
+      "score": 9,
+      "notes": "63 tests for sprint 7 covering all contract criteria. Tests verify AppleScript content, exit codes, mock invocation counts, JSON structure, error messages, and help output. All tests use mock_osascript — no real Mail.app interaction. Minor gap: no test for --json combined with --dry-run on mark/move (edge case, not in contract)."
+    },
+    "errorHandling": {
+      "score": 9,
+      "notes": "Consistent error handling via handle_mail_error from shared output module. Validation catches no-flags and contradictory flags before reaching AppleScript. Mail-not-running and script errors produce clear messages. Uses proper exit codes (EXIT_USAGE_ERROR for validation, EXIT_GENERAL_ERROR for runtime errors)."
+    },
+    "architecturalConsistency": {
+      "score": 10,
+      "notes": "Perfect pattern alignment with prior sprints. Same build_*_script / perform_* / register pattern used in compose and reply_forward modules. Imports from engine, errors, and output modules. Registered via messages_app in cli.py alongside existing message subcommands. No ad-hoc patterns or shortcuts."
+    }
+  },
+  "primaryScore": 9.3,
+  "safetyCheck": {
+    "result": "PASS",
+    "evidence": "Grep for 'send' in mark_move.py: only found in docstring comments explaining these are NOT send operations. No 'send' verb in any generated AppleScript. No --dangerously-send flag on mark or move commands."
+  },
+  "summary": "Sprint 7 is a clean PASS. The mark and move commands implement all 28 contract criteria with zero failures. Architecture follows the established build/perform/register pattern with full code reuse from shared modules. 63 new tests bring the total to 432, all passing. No regressions across Sprints 1-6. Safety check confirms no send verb in generated AppleScript."
+}
