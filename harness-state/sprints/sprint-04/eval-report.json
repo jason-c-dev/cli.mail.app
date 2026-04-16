@@ -1,0 +1,166 @@
+{
+  "sprintNumber": 4,
+  "overallResult": "PASS",
+  "passCount": 25,
+  "failCount": 0,
+  "criteriaResults": [
+    {
+      "id": "C-081",
+      "result": "PASS",
+      "evidence": "'mailctl messages search --from alice' via CliRunner with mock_osascript returning canned output for Work (3 msgs) and Personal (2 msgs) accounts exits 0. JSON output contains messages from both accounts. Tests: TestSearchCommandExists (3 functions, all pass)."
+    },
+    {
+      "id": "C-082",
+      "result": "PASS",
+      "evidence": "'mailctl messages search' with no filter flags exits with non-zero code (EXIT_USAGE_ERROR=2). Combined stdout+stderr contains 'search criterion' or 'at least one'. Implementation at messages.py:831 checks any([from_filter, subject_filter, body_filter, since, before]) and calls render_error() + typer.Exit(code=2). Tests: TestSearchRequiresFilter (2 functions, all pass)."
+    },
+    {
+      "id": "C-083",
+      "result": "PASS",
+      "evidence": "'--from alice --json' returns exactly 2 messages (alice@example.com from Work, alice@personal.com from Personal). bob and charlie excluded. '--from Alice' (capitalized) also returns 2 — case-insensitive substring match via lower_from in m['from'].lower() at _apply_search_filters(). Tests: TestSearchFromFilter (3 functions, all pass)."
+    },
+    {
+      "id": "C-084",
+      "result": "PASS",
+      "evidence": "'--subject invoice --json' returns 2 messages: 'Invoice #1234' (id 301) and 'Re: Invoice #1234' (id 303). '--subject INVOICE' also returns 2 — case-insensitive. Tests: TestSearchSubjectFilter (2 functions, all pass)."
+    },
+    {
+      "id": "C-085",
+      "result": "PASS",
+      "evidence": "'--body urgent --json' with body-inclusive mock data returns 2 messages (ids 301 and 402) where body contains 'urgent'. '--body URGENT' also returns 2 — case-insensitive. '--body hiking' returns only msg 401. Body content fetched via AppleScript 'content of msg' with @@NL@@ newline encoding, parsed and checked in _apply_search_filters(). Tests: TestSearchBodyFilter (3 functions, all pass)."
+    },
+    {
+      "id": "C-086",
+      "result": "PASS",
+      "evidence": "'--since 2025-01-01 --json' returns 4 messages (Jan 8, 9, 10 + Feb 4), excluding Dec 15 2024 (id 402). '--before 2025-01-01 --json' returns only Dec 15 (id 402). Combined '--since 2025-01-01 --before 2025-02-01' returns 3 Jan messages, excluding both Dec 2024 and Feb 2025. Each works independently. Tests: TestSearchDateFilters (4 functions, all pass). Note: test_since_and_before_combined is a no-op (just 'pass') but test_since_and_before_range covers the same scenario with full assertions."
+    },
+    {
+      "id": "C-087",
+      "result": "PASS",
+      "evidence": "'--from alice --subject invoice --json' returns exactly 1 message (id 301, alice@example.com, Invoice #1234). The msg from alice with subject 'Weekend Plans' is excluded, and the invoice from me@work.com is excluded — AND logic confirmed. Tests: TestSearchCombinedFilters (1 function, passes)."
+    },
+    {
+      "id": "C-088",
+      "result": "PASS",
+      "evidence": "'--from a --json' (no --account) returns messages from both 'Work' and 'Personal' accounts. Each result has an 'account' field with value 'Work' or 'Personal'. fetch_search_results() calls build_account_names_script() then iterates each account. Tests: TestSearchCrossAccount (2 functions, all pass)."
+    },
+    {
+      "id": "C-089",
+      "result": "PASS",
+      "evidence": "'--from alice --account Work --json' returns only Work account messages. No account list call is made (mock provides only 1 output). All results have account='Work'. Tests: TestSearchAccountScoping (2 functions, all pass)."
+    },
+    {
+      "id": "C-090",
+      "result": "PASS",
+      "evidence": "'--from test --mailbox Sent' causes the generated search scripts (calls[1:]) to contain '\"Sent\"' in the AppleScript. build_search_script(mailbox='Sent') generates 'mailbox \"Sent\" of acct'. Tests: TestSearchMailboxScoping (1 function, passes)."
+    },
+    {
+      "id": "C-091",
+      "result": "PASS",
+      "evidence": "JSON output from '--from a --json' includes 'mailbox' field on every result, with non-empty values including 'INBOX'. parse_search_output() extracts mailbox from parts[0] of each ||-delimited line. Tests: TestSearchMailboxField (2 functions, all pass)."
+    },
+    {
+      "id": "C-092",
+      "result": "PASS",
+      "evidence": "'--from test --limit 2 --json' with 8 matching messages returns at most 2. DEFAULT_LIMIT constant equals 25. Without --limit, 30 mocked messages yield exactly 25 in output. Limit applied in fetch_search_results() as all_messages[:limit]. Tests: TestSearchLimit (3 functions, all pass)."
+    },
+    {
+      "id": "C-093",
+      "result": "PASS",
+      "evidence": "Non-JSON output from '--from alice' contains account names ('Work' or 'Personal') and data columns (alice, invoice/plans). SEARCH_COLUMNS defines 6 columns: Account, Mailbox, Date, From, Subject, ID with appropriate max_width values. render_output() uses Rich Table via the shared output module. Tests: TestSearchTableOutput (2 functions, all pass)."
+    },
+    {
+      "id": "C-094",
+      "result": "PASS",
+      "evidence": "'--from alice --json' produces valid JSON array. Each object has id, account, mailbox, date, from, subject, read (boolean), flagged (boolean). Internal '_body' field is stripped before output (msg.pop('_body', None) in fetch_search_results()). Tests: TestSearchJSONOutput (3 functions, all pass)."
+    },
+    {
+      "id": "C-095",
+      "result": "PASS",
+      "evidence": "'--from alice --json --limit 50' returns ids ['401', '301'] — Feb 4 (Personal) before Jan 10 (Work), newest first. Results interleaved across accounts: ['Personal', 'Work']. Sorting via _sort_by_date_descending() in fetch_search_results(). Tests: TestSearchSorting (2 functions, all pass)."
+    },
+    {
+      "id": "C-096",
+      "result": "PASS",
+      "evidence": "2 accounts: mock_osascript.calls has exactly 3 entries (1 account list + 2 searches). With --account Work: only 1 call (no account list). 3 accounts: 4 calls. fetch_search_results() does one run_applescript(build_account_names_script()) + one per account. Tests: TestSearchBatching (3 functions, all pass)."
+    },
+    {
+      "id": "C-097",
+      "result": "PASS",
+      "evidence": "'--from nonexistent --json' with empty mocked search output returns '[]' (empty JSON array) and exit code 0. Non-JSON mode also exits 0. Tests: TestSearchEmptyResults (2 functions, all pass)."
+    },
+    {
+      "id": "C-098",
+      "result": "PASS",
+      "evidence": "When mock_osascript.set_error('application isn't running') is configured, '--from test' exits non-zero. Combined output contains 'mail' or 'Mail'. Error handled via handle_mail_error() which catches AppleScriptError. Tests: TestSearchMailNotRunning (2 functions, all pass)."
+    },
+    {
+      "id": "C-099",
+      "result": "PASS",
+      "evidence": "Successful search: data appears on stdout (contains 'alice' or 'Search'). Error case: error message appears on stderr. Search command uses render_output() for stdout and handle_mail_error()/render_error() for stderr, consistent with Sprint 2 and 3 convention. Tests: TestSearchStreamSeparation (2 functions, all pass)."
+    },
+    {
+      "id": "C-100",
+      "result": "PASS",
+      "evidence": "'mailctl messages search --help' exits 0 and output contains all 9 options: --from, --subject, --body, --since, --before, --account, --mailbox, --limit, --json. Each has a descriptive help string. Verified both via test and direct CLI execution. Tests: TestSearchHelp (1 function, passes)."
+    },
+    {
+      "id": "C-101",
+      "result": "PASS",
+      "evidence": "'mailctl messages --help' lists 'search' alongside 'list' and 'show' in the Commands section. Confirmed via CLI execution: 'list', 'search', 'show' all visible. Tests: TestMessagesHelpListsSearch (1 function, passes)."
+    },
+    {
+      "id": "C-102",
+      "result": "PASS",
+      "evidence": "tests/unit/test_search.py contains 22 test classes with 55 test functions, all passing. Coverage areas: multi-account success (3), no-filter error (2), --from (3), --subject (2), --body (3), date filters (4), combined AND (1), cross-account (2), --account scoping (2), --mailbox scoping (1), mailbox field (2), --limit (3), table output (2), --json (3), date sorting (2), batch efficiency (3), empty results (2), Mail.app error (2), stream separation (2), help text (1), subcommand listing (1), architecture (9). Far exceeds the 12-test minimum."
+    },
+    {
+      "id": "C-103",
+      "result": "PASS",
+      "evidence": "'pytest -v' from project root: 229 passed in 0.23s, 0 failures, 0 errors. Includes Sprint 1 tests (test_cli.py, test_engine.py), Sprint 2 tests (test_accounts.py, test_mailboxes.py), Sprint 3 tests (test_messages.py), and Sprint 4 tests (test_search.py). Full regression green."
+    },
+    {
+      "id": "C-104",
+      "result": "PASS",
+      "evidence": "Search follows the established architecture: build_account_names_script() and build_search_script() for AppleScript generation, parse_account_names_output() and parse_search_output() for parsing, fetch_search_results() for orchestration (script + engine + parse), and the messages_search command handler delegates to fetch_search_results() + render_output() / handle_mail_error(). SEARCH_COLUMNS defined for table rendering. All in src/mailctl/commands/messages.py. Tests: TestSearchArchitecture (9 functions, all pass)."
+    },
+    {
+      "id": "C-105",
+      "result": "PASS",
+      "evidence": "'mailctl --version' prints 'mailctl 0.1.0' and exits 0. '--help' lists accounts, mailboxes, and messages. All 174 Sprint 1/2/3 tests pass (229 total - 55 Sprint 4 = 174 prior). Full regression confirmed via pytest -v with 0 failures."
+    }
+  ],
+  "regressionResults": {
+    "sprint1": "PASS — All 38 Sprint 1 tests pass (test_cli.py, test_engine.py). CLI scaffold, version, help, error rendering, engine functions all intact.",
+    "sprint2": "PASS — All 28 Sprint 2 tests pass (test_accounts.py, test_mailboxes.py). Accounts list, mailboxes list, JSON output, batch calls, error handling all intact.",
+    "sprint3": "PASS — All 108 Sprint 3 tests pass (test_messages.py). Messages list, messages show, filters, date range, limit, JSON, sorting, attachments, headers, raw output all intact."
+  },
+  "holisticScores": {
+    "correctness": {
+      "score": 10,
+      "rationale": "All 25 contract criteria pass. All 229 tests pass with 0 failures. Every filter, scoping, output, error handling, and batching requirement is correctly implemented."
+    },
+    "codeQuality": {
+      "score": 9,
+      "rationale": "Clean build/parse/fetch/render architecture consistent with prior sprints. Good docstrings and clear section headers. Functions are well-named and appropriately scoped. One minor nit: test_since_and_before_combined in test_search.py is a dead test (just 'pass') — not a production issue but a test quality gap."
+    },
+    "testQuality": {
+      "score": 9,
+      "rationale": "55 search-specific tests across 22 test classes — thorough coverage. Tests verify both positive and negative cases, case-insensitivity, boundary conditions, batch efficiency, and architecture. One dead test (test_since_and_before_combined) is the only blemish, and its scenario is covered by test_since_and_before_range."
+    },
+    "cliUX": {
+      "score": 9,
+      "rationale": "Help text is comprehensive with all 9 options clearly described. Error messages are actionable. Proper stderr/stdout separation. Table output includes all relevant columns. --json produces clean structured output. Default limit of 25 is sensible."
+    },
+    "performance": {
+      "score": 9,
+      "rationale": "Efficient N+1 osascript call pattern (1 for account list + 1 per account). When --account is specified, avoids the account list call entirely (just 1 call). Body content only fetched when --body filter is used (include_body flag)."
+    },
+    "errorHandling": {
+      "score": 9,
+      "rationale": "Mail not running detected and reported with clear message. No-filter usage produces informative error. Proper exit codes (0 for success, 2 for usage error, non-zero for runtime errors). Errors go to stderr, data to stdout."
+    }
+  },
+  "primaryScore": 9.2,
+  "summary": "Sprint 4 (Cross-Account Search) passes all 25 criteria. The implementation adds a well-structured search command with 5 filter types (from, subject, body, since, before), account/mailbox scoping, batch-efficient osascript calls, and proper output formatting. Full test suite (229 tests) passes with 0 failures including Sprint 1-3 regression. One minor quality nit: a dead test (test_since_and_before_combined) that asserts nothing, though the scenario is covered elsewhere."
+}
