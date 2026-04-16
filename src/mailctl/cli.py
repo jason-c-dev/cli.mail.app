@@ -74,11 +74,13 @@ from mailctl.commands.accounts import register as register_accounts
 from mailctl.commands.compose import register as register_compose
 from mailctl.commands.mailboxes import register as register_mailboxes
 from mailctl.commands.messages import register as register_messages
+from mailctl.commands.reply_forward import register as register_reply_forward
 
 register_accounts(accounts_app)
 register_mailboxes(mailboxes_app)
 register_messages(messages_app)
 register_compose(app)
+register_reply_forward(app)
 
 
 # --------------------------------------------------------------------------- #
