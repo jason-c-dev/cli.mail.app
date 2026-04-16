@@ -53,3 +53,11 @@ Out of scope for v1: calendar, contacts, rules/filters, signatures, multi-device
 - **Time**: 2026-04-15T23:58:33Z
 - **Merge commit**: e68716a91e99b1c70972220e8a92d472d60f2682
 
+
+## Sprint 03: Message Listing & Show
+
+- **Status**: PASS
+- **Attempt**: 1
+- **Time**: 2026-04-16T00:13:50Z
+- **Merge commit**: c9a4ece96630ebcb444ab932a3f8bc59cc502966
+
