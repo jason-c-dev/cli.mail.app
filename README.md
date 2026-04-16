@@ -12,10 +12,11 @@ It's also explicitly intended as an **Apple Mail.app CLI for agent
 harnesses that prefer local bash over MCP servers** — Claude Code,
 scripted pipelines, cron jobs, anything that can shell out. The
 draft-first safety model means a runaway script can fill your Drafts
-folder but can't send. For Claude Code specifically, see the bundled
-[`skills/mailctl/`](skills/mailctl/SKILL.md) — drop it into a project's
-`.claude/skills/` and Claude will pick up how to use `mailctl` without
-needing any context from this repo.
+folder but can't send. For agents that understand the skill format,
+see the bundled [`skills/mailctl/`](skills/mailctl/SKILL.md) — drop it
+into Claude Code's `.claude/skills/` (or the equivalent directory any
+other harness that supports skills expects) and the agent will pick up
+how to use `mailctl` without needing any context from this repo.
 
 A short sample of what that feels like:
 
@@ -511,22 +512,26 @@ introduces a send-capable path must:
 - Default to "cancel" at confirmation prompts
 - Have corresponding unit tests asserting the bypass-resistance
 
-### Using mailctl with Claude Code
+### Using mailctl with Claude Code (or any skill-aware harness)
 
-The supported Claude Code integration is the skill at
+The supported agent integration is the skill at
 [`skills/mailctl/SKILL.md`](skills/mailctl/SKILL.md). Copy the
-`skills/mailctl/` directory into a project's `.claude/skills/` (or
-your user-level `~/.claude/skills/`) and Claude will load it on demand
-when a user asks to read or send email. The skill documents every
-command, the safety model, common workflows, and gotchas — enough for
-a fresh Claude instance to wield `mailctl` competently without needing
-this repo's source tree.
+`skills/mailctl/` directory into:
+
+- Claude Code: a project's `.claude/skills/` or your user-level
+  `~/.claude/skills/`.
+- Any other harness that supports the skill format: whatever directory
+  that harness expects skills to live in (see its docs).
+
+The skill documents every command, the safety model, common workflows,
+and gotchas — enough for a fresh agent to wield `mailctl` competently
+without needing this repo's source tree.
 
 There is deliberately no `CLAUDE.md` at the repo root. If you're
-using Claude Code to modify `mailctl` itself, the README plus
-`docs/product-spec.md` and the existing test suite are the reference
-points — the safety-model tests under `tests/unit/test_safety_model.py`
-make bypass-regressions hard to miss.
+using Claude Code (or any agent) to modify `mailctl` itself, the README
+plus `docs/product-spec.md` and the existing test suite are the
+reference points — the safety-model tests under
+`tests/unit/test_safety_model.py` make bypass-regressions hard to miss.
 
 ## License
 
