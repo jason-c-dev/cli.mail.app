@@ -1,0 +1,321 @@
+{
+  "sprintNumber": 4,
+  "name": "Cross-Account Search",
+  "theme": "Find any message across all accounts without knowing where it lives.",
+  "features": ["Cross-Account Search (3.6)"],
+  "criteria": [
+    {
+      "id": "C-081",
+      "category": "search-command",
+      "description": "'mailctl messages search' command exists and runs without error when given mocked AppleScript output representing messages across multiple accounts",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from alice' via CliRunner with mock_osascript returning canned output for messages across 2+ accounts",
+        "Verify exit code is 0",
+        "Verify output contains message data from the canned results"
+      ],
+      "threshold": "Command succeeds with exit code 0 and search results visible in output"
+    },
+    {
+      "id": "C-082",
+      "category": "search-command",
+      "description": "'mailctl messages search' requires at least one search filter (--from, --subject, --body, --since, or --before); running with no filters produces a usage error",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search' with no filter arguments via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify error message indicates that at least one search criterion is required"
+      ],
+      "threshold": "Non-zero exit code and informative error when no search filter is given"
+    },
+    {
+      "id": "C-083",
+      "category": "search-filters",
+      "description": "'mailctl messages search --from <sender>' filters results to messages matching the sender (case-insensitive substring match)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from alice --json' with mocked data containing messages from alice@example.com and bob@example.com across multiple accounts",
+        "Parse JSON output and verify only messages from alice appear",
+        "Verify the filter is case-insensitive (e.g. '--from Alice' matches 'alice@example.com')"
+      ],
+      "threshold": "Only messages matching the sender filter appear in output"
+    },
+    {
+      "id": "C-084",
+      "category": "search-filters",
+      "description": "'mailctl messages search --subject <text>' filters results to messages matching the subject (case-insensitive substring match)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --subject invoice --json' with mocked data containing messages with various subjects",
+        "Parse JSON output and verify only messages with 'invoice' in the subject appear",
+        "Verify the filter is case-insensitive"
+      ],
+      "threshold": "Only messages matching the subject filter appear in output"
+    },
+    {
+      "id": "C-085",
+      "category": "search-filters",
+      "description": "'mailctl messages search --body <text>' filters results to messages whose body content contains the given text (case-insensitive substring match)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --body urgent --json' with mocked data where some messages have 'urgent' in their body and some do not",
+        "Parse JSON output and verify only messages containing 'urgent' in their body appear",
+        "Verify the filter is case-insensitive"
+      ],
+      "threshold": "Only messages whose body matches the content filter appear in output"
+    },
+    {
+      "id": "C-086",
+      "category": "search-filters",
+      "description": "'mailctl messages search --since <date> --before <date>' filters results by date range, and each can be used independently",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test --since 2025-01-01 --before 2025-02-01 --json' with mocked data spanning multiple months",
+        "Parse JSON output and verify only messages within the date range appear",
+        "Verify --since alone works (no upper bound), and --before alone works (no lower bound)"
+      ],
+      "threshold": "Date range filters correctly include/exclude messages by date"
+    },
+    {
+      "id": "C-087",
+      "category": "search-filters",
+      "description": "Multiple search filters can be combined (e.g., '--from alice --subject invoice --since 2025-01-01') and all are applied conjunctively",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from alice --subject invoice --json' with mocked data containing mixed messages",
+        "Parse JSON output and verify only messages matching ALL specified filters appear"
+      ],
+      "threshold": "All specified filters are applied together (AND logic)"
+    },
+    {
+      "id": "C-088",
+      "category": "search-scoping",
+      "description": "'mailctl messages search' without --account searches across ALL accounts, and results include the account name for each message",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Mock two accounts ('Work' and 'Personal') each with messages",
+        "Run 'mailctl messages search --from test --json' without --account",
+        "Parse JSON output and verify messages from both accounts appear",
+        "Verify each result includes an 'account' field identifying which account it came from"
+      ],
+      "threshold": "Search spans all accounts; each result shows the account name"
+    },
+    {
+      "id": "C-089",
+      "category": "search-scoping",
+      "description": "'mailctl messages search --account <name>' scopes the search to a single account",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Mock two accounts ('Work' and 'Personal') each with messages",
+        "Run 'mailctl messages search --from test --account Work --json'",
+        "Parse JSON output and verify only messages from the 'Work' account appear"
+      ],
+      "threshold": "Only messages from the specified account appear when --account is used"
+    },
+    {
+      "id": "C-090",
+      "category": "search-scoping",
+      "description": "'mailctl messages search --mailbox <name>' scopes the search to a specific mailbox within the targeted account(s)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test --mailbox Sent --json' with mocked data",
+        "Verify the AppleScript targets the 'Sent' mailbox specifically",
+        "Verify results reflect the mailbox scope"
+      ],
+      "threshold": "Search targets the specified mailbox; results reflect the scoped mailbox"
+    },
+    {
+      "id": "C-091",
+      "category": "search-scoping",
+      "description": "Search results include the mailbox name for each message, so the user knows where in their folder structure the message lives",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test --json' with mocked data from different mailboxes",
+        "Parse JSON output and verify each result includes a 'mailbox' field"
+      ],
+      "threshold": "Each search result includes a 'mailbox' field"
+    },
+    {
+      "id": "C-092",
+      "category": "search-limit",
+      "description": "'mailctl messages search --limit N' caps the number of results returned, with a default of 25",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test --limit 2 --json' with mocked data containing 5+ matching messages",
+        "Verify JSON output contains at most 2 messages",
+        "Verify that without --limit, the default cap is 25 (inspect code or test with >25 messages)"
+      ],
+      "threshold": "--limit caps output; default limit is 25"
+    },
+    {
+      "id": "C-093",
+      "category": "search-output",
+      "description": "'mailctl messages search' displays a Rich table with columns for: account, mailbox, date, from, subject, and message ID",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test' (non-JSON mode) with mocked data",
+        "Verify the output includes account name, mailbox name, date, from, subject, and message ID per result",
+        "Verify the output is formatted as a table (not raw text)"
+      ],
+      "threshold": "Table shows account, mailbox, date, from, subject, and message ID per result"
+    },
+    {
+      "id": "C-094",
+      "category": "search-output",
+      "description": "'mailctl messages search --json' outputs valid JSON array with objects containing id, account, mailbox, date, from, subject, read, and flagged fields",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test --json' via CliRunner with mocked data",
+        "Parse stdout as JSON",
+        "Verify it is a list of objects",
+        "Verify each object has id, account, mailbox, date, from, subject, read (boolean), and flagged (boolean) fields"
+      ],
+      "threshold": "Valid JSON array with all required fields per search result"
+    },
+    {
+      "id": "C-095",
+      "category": "search-output",
+      "description": "Search results are sorted by date descending (newest first), consistent with 'messages list'",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test --json' with mocked data containing messages with different dates from different accounts",
+        "Parse JSON output and verify dates are in descending order (newest first), interleaved across accounts"
+      ],
+      "threshold": "Results ordered newest-first regardless of which account they came from"
+    },
+    {
+      "id": "C-096",
+      "category": "search-batching",
+      "description": "Cross-account search uses one osascript call per account (batch fetching), not one per message or one per mailbox",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Mock two accounts and run 'mailctl messages search --from test'",
+        "Inspect mock_osascript.calls to count invocations",
+        "Verify there are at most N+1 osascript calls for N accounts (one to get the account list + one per account for searching)"
+      ],
+      "threshold": "At most N+1 osascript calls for N accounts (account list + one search per account)"
+    },
+    {
+      "id": "C-097",
+      "category": "search-empty",
+      "description": "'mailctl messages search' with no matching results produces an empty table (not an error), and '--json' produces an empty JSON array",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from nonexistent --json' with mocked data containing no matches",
+        "Parse JSON output and verify it is an empty array []",
+        "Run without --json and verify exit code is 0 (no error)"
+      ],
+      "threshold": "Empty results produce exit code 0 with empty table/JSON array, not an error"
+    },
+    {
+      "id": "C-098",
+      "category": "error-handling",
+      "description": "'mailctl messages search' produces a clear error when Mail.app is not running",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test' with mock_osascript configured to simulate Mail.app not running",
+        "Verify exit code is non-zero",
+        "Verify error message mentions Mail.app"
+      ],
+      "threshold": "Non-zero exit code and user-friendly error message on stderr"
+    },
+    {
+      "id": "C-099",
+      "category": "error-handling",
+      "description": "Search command sends data to stdout and errors to stderr, following the convention established in Sprints 2 and 3",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages search --from test' successfully and verify data on stdout",
+        "Run 'mailctl messages search --from test' with an error and verify error message on stderr"
+      ],
+      "threshold": "Stdout for data, stderr for errors, consistent with prior sprints"
+    },
+    {
+      "id": "C-100",
+      "category": "cli-help",
+      "description": "'mailctl messages search --help' describes all options including --from, --subject, --body, --since, --before, --account, --mailbox, --limit, and --json",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl messages search --help' via CliRunner",
+        "Verify the help text mentions --from, --subject, --body, --since, --before, --account, --mailbox, --limit, and --json options",
+        "Verify the help text includes a clear description of what the command does"
+      ],
+      "threshold": "Help output mentions all search options with descriptions"
+    },
+    {
+      "id": "C-101",
+      "category": "cli-help",
+      "description": "'mailctl messages --help' now lists 'search' alongside 'list' and 'show' as available subcommands",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl messages --help' via CliRunner",
+        "Verify the output lists 'search' as an available subcommand",
+        "Verify 'list' and 'show' (from Sprint 3) are still listed"
+      ],
+      "threshold": "'search' visible in messages subcommand help, alongside existing subcommands"
+    },
+    {
+      "id": "C-102",
+      "category": "testing",
+      "description": "Unit tests exist for 'messages search' covering: success with multiple accounts, each filter option (--from, --subject, --body, --since, --before), combined filters, --account scoping, --mailbox scoping, --limit, --json output, empty results, and no-filter error",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run pytest for the search test module or messages test module",
+        "Verify tests exist covering: multi-account success, --from filter, --subject filter, --body filter, date filters, combined filters, account scoping, mailbox scoping, --limit, --json, empty results, no-filter error",
+        "Verify all tests pass"
+      ],
+      "threshold": "At least 12 distinct test cases for messages search, all passing"
+    },
+    {
+      "id": "C-103",
+      "category": "testing",
+      "description": "Full test suite (pytest from project root) passes with zero failures, including all Sprint 1, 2, 3, and 4 tests",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from the project root",
+        "Verify all tests pass (0 failures, 0 errors)",
+        "Verify Sprint 1, 2, and 3 tests still pass (regression check)"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-104",
+      "category": "code-quality",
+      "description": "Search implementation follows the established architecture: AppleScript generation in build_*_script() functions, parsing in parse_*_output() functions, and thin Typer command handlers that delegate to fetch functions and render_output()",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect the search implementation in src/mailctl/commands/messages.py (or a dedicated search module)",
+        "Verify AppleScript generation is in a build_search_script() or similar function",
+        "Verify output parsing is in a parse_search_output() or similar function",
+        "Verify the command handler uses the shared render_output() and handle_mail_error() from the output module"
+      ],
+      "threshold": "Search follows the build/parse/fetch/render architecture pattern from prior sprints"
+    },
+    {
+      "id": "C-105",
+      "category": "regression",
+      "description": "'mailctl --version', 'mailctl accounts list', 'mailctl mailboxes list', 'mailctl messages list', and 'mailctl messages show' all still work correctly (Sprint 1, 2, and 3 functionality preserved)",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version' and verify it prints version and exits 0",
+        "Run 'mailctl --help' and verify it lists accounts, mailboxes, and messages as command groups",
+        "Run existing Sprint 1, 2, and 3 unit tests and verify they still pass"
+      ],
+      "threshold": "All Sprint 1, 2, and 3 functionality still works"
+    }
+  ],
+  "outOfScope": [
+    "Compose/reply/forward functionality (Sprint 5-6)",
+    "Message mark/move/delete operations (Sprint 7-8)",
+    "Draft editing (Sprint 8)",
+    "Doctor command (Sprint 9)",
+    "Shell completions (Sprint 10)",
+    "Integration tests against real Mail.app (Sprint 10)",
+    "Full-text body indexing or search engine (search is done via AppleScript's whose clause or Python post-filtering)",
+    "Saved searches or search history",
+    "Fuzzy matching or regex-based search — substring match is sufficient",
+    "Attachment content search — search covers from, subject, body text, and date only",
+    "Pagination or cursor-based result navigation"
+  ],
+  "regressionSprints": [1, 2, 3]
+}
