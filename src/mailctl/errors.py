@@ -48,7 +48,9 @@ class ScriptTimeoutError(AppleScriptError):
     def __init__(self, timeout: float, stderr: str = "") -> None:
         self.timeout = timeout
         super().__init__(
-            f"AppleScript timed out after {timeout}s. Mail.app may be unresponsive.",
+            f"AppleScript timed out after {timeout}s. "
+            f"Mail.app may be unresponsive — try restarting Mail.app or "
+            f"check whether it is stuck on a dialog.",
             stderr=stderr,
         )
 

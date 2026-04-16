@@ -468,6 +468,14 @@ def register(drafts_app: typer.Typer) -> None:
                 remove_attach=remove_attach_list,
             )
         except AppleScriptError as exc:
+            exc_str = str(exc).lower()
+            if "not found" in exc_str or "message not found" in exc_str:
+                render_error(
+                    f'Message "{message_id}" not found. '
+                    f"Verify the message ID with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_GENERAL_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable but satisfies type checker
 

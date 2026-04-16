@@ -707,6 +707,14 @@ def register(app: typer.Typer) -> None:
         try:
             original = fetch_original_message(message_id)
         except AppleScriptError as exc:
+            exc_str = str(exc).lower()
+            if "not found" in exc_str or "can't get" in exc_str:
+                render_error(
+                    f'Message "{message_id}" not found. '
+                    f"Verify the message ID with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable
 
@@ -913,6 +921,14 @@ def register(app: typer.Typer) -> None:
         try:
             original = fetch_original_message(message_id)
         except AppleScriptError as exc:
+            exc_str = str(exc).lower()
+            if "not found" in exc_str or "can't get" in exc_str:
+                render_error(
+                    f'Message "{message_id}" not found. '
+                    f"Verify the message ID with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable
 

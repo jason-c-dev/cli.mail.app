@@ -80,6 +80,7 @@ app.add_typer(drafts_app, name="drafts")
 from mailctl.commands.accounts import register as register_accounts
 from mailctl.commands.compose import register as register_compose
 from mailctl.commands.delete import register as register_delete
+from mailctl.commands.doctor import register as register_doctor
 from mailctl.commands.drafts import register as register_drafts
 from mailctl.commands.mailboxes import register as register_mailboxes
 from mailctl.commands.mark_move import register as register_mark_move
@@ -94,6 +95,7 @@ register_delete(messages_app)
 register_compose(app)
 register_reply_forward(app)
 register_drafts(drafts_app)
+register_doctor(app)
 
 
 # --------------------------------------------------------------------------- #

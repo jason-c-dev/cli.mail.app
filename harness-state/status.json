@@ -1,5 +1,5 @@
 {
-  "currentSprint": 7,
+  "currentSprint": 9,
   "phase": "eval-complete",
   "result": "PASS",
   "sprints": {
@@ -9,6 +9,8 @@
     "4": {"status": "complete", "result": "PASS"},
     "5": {"status": "complete", "result": "PASS"},
     "6": {"status": "complete", "result": "PASS"},
-    "7": {"status": "complete", "result": "PASS"}
+    "7": {"status": "complete", "result": "PASS"},
+    "8": {"status": "complete", "result": "PASS"},
+    "9": {"status": "complete", "result": "PASS"}
   }
 }
