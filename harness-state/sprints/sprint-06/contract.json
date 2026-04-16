@@ -1,0 +1,383 @@
+{
+  "sprintNumber": 6,
+  "name": "Reply & Forward",
+  "theme": "Respond to and forward existing messages with the same safety guarantees as compose.",
+  "features": ["Reply & Forward (3.8)"],
+  "criteria": [
+    {
+      "id": "C-131",
+      "category": "reply-command",
+      "description": "'mailctl reply <message-id>' command exists as a top-level command, accepts a positional message-id argument, and succeeds (exit 0) when given a valid id and body source with mocked osascript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body \"Thanks\"' via CliRunner with mock_osascript configured to return original-message data for the fetch call and a draft id for the reply call",
+        "Verify exit code is 0",
+        "Verify mock_osascript was invoked (at least one call to fetch the original message, at least one to create the reply)"
+      ],
+      "threshold": "Command succeeds with exit code 0 and at least two mocked osascript calls (fetch + reply)"
+    },
+    {
+      "id": "C-132",
+      "category": "reply-recipients",
+      "description": "'mailctl reply <id>' (without --all) sets the reply recipient to the original message's sender only; no other recipients from the original To/Cc are included",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to return an original message with sender='alice@example.com', to='user@example.com, bob@example.com', cc='carol@example.com'",
+        "Run 'mailctl reply 12345 --body \"Got it\"' via CliRunner",
+        "Inspect the reply AppleScript in mock_osascript.calls",
+        "Verify the script creates a 'to recipient' for 'alice@example.com' only",
+        "Verify the script does NOT include bob@example.com or carol@example.com as recipients"
+      ],
+      "threshold": "Reply-to-sender addresses only the original sender; original To/Cc are excluded"
+    },
+    {
+      "id": "C-133",
+      "category": "reply-all",
+      "description": "'mailctl reply <id> --all' sets recipients to: original sender + all original To recipients (minus the user) + all original Cc recipients",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to return an original message with sender='alice@example.com', to='user@example.com, bob@example.com', cc='carol@example.com'",
+        "Run 'mailctl reply 12345 --all --body \"Agreed\"' via CliRunner",
+        "Inspect the reply AppleScript in mock_osascript.calls",
+        "Verify 'to recipient' entries exist for alice@example.com and bob@example.com",
+        "Verify 'cc recipient' entry exists for carol@example.com",
+        "Verify the script does not duplicate the user's own address as a recipient"
+      ],
+      "threshold": "Reply-all includes original sender and all original recipients with correct to/cc classification"
+    },
+    {
+      "id": "C-134",
+      "category": "forward-command",
+      "description": "'mailctl forward <message-id> --to <address>' command exists as a top-level command; --to is required and repeatable; missing --to produces a usage error",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl forward 12345 --to dave@example.com --body \"FYI\"' with mock_osascript returning original-message data and a draft id",
+        "Verify exit code is 0",
+        "Run 'mailctl forward 12345 --body \"FYI\"' (no --to) and verify exit code is non-zero",
+        "Run 'mailctl forward 12345 --to a@x.com --to b@x.com --body \"FYI\"' and verify both addresses appear in the generated AppleScript"
+      ],
+      "threshold": "Forward command succeeds with --to, fails without it, and supports multiple --to addresses"
+    },
+    {
+      "id": "C-135",
+      "category": "original-content",
+      "description": "Reply and forward both include the original message content as a quoted section in the message body, visually separated from the user's new text",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to return an original message with body='Original body text', sender='alice@example.com', date='Monday, April 14, 2025 at 10:00:00 AM', subject='Hello'",
+        "Run 'mailctl reply 12345 --body \"My reply\"'",
+        "Inspect the generated AppleScript body content and verify it contains both 'My reply' and 'Original body text'",
+        "Verify the original content is preceded by a separator or attribution line (e.g. 'On <date>, <sender> wrote:' or similar)",
+        "Run 'mailctl forward 12345 --to d@x.com --body \"See below\"' and verify the same pattern: user body + original content with attribution"
+      ],
+      "threshold": "Both reply and forward include the user's new body prepended to a quoted/attributed original message"
+    },
+    {
+      "id": "C-136",
+      "category": "body-sources",
+      "description": "Reply and forward accept body via --body <text>, --body-file <path>, or piped stdin, following the same rules as compose (exactly one source required)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body \"inline\"' and verify the body appears in the generated AppleScript",
+        "Write 'file content' to a temp file; run 'mailctl reply 12345 --body-file <path>' and verify 'file content' appears",
+        "Run 'mailctl reply 12345' with stdin piped as 'piped content' and verify it appears",
+        "Run 'mailctl reply 12345 --body X --body-file Y' and verify it errors (two sources)",
+        "Repeat at least one body-source test with 'mailctl forward' to confirm parity"
+      ],
+      "threshold": "All three body sources work for reply and forward; supplying two is a usage error"
+    },
+    {
+      "id": "C-137",
+      "category": "attachments",
+      "description": "'--attach <path>' is repeatable on both reply and forward; attachment paths are validated before AppleScript execution",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Create temp files and run 'mailctl reply 12345 --body B --attach /tmp/a.txt --attach /tmp/b.txt'",
+        "Verify generated AppleScript references both attachment paths",
+        "Run 'mailctl forward 12345 --to a@x.com --body B --attach /tmp/a.txt' and verify attachment appears",
+        "Run 'mailctl reply 12345 --body B --attach /nonexistent' and verify non-zero exit with error mentioning the missing file"
+      ],
+      "threshold": "Attachments are passed through to AppleScript; missing files fail fast before any message is created"
+    },
+    {
+      "id": "C-138",
+      "category": "safety-model",
+      "description": "DEFAULT BEHAVIOUR: 'mailctl reply' WITHOUT '--dangerously-send' creates a draft and the generated AppleScript NEVER contains the 'send' verb",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body \"Thanks\"' with mock_osascript (no --dangerously-send)",
+        "Inspect every script string in mock_osascript.calls",
+        "Assert NONE of the script strings contain the AppleScript 'send' verb",
+        "Assert a draft-creation script is present (references 'make new outgoing message' or 'reply' construct without 'send')",
+        "Verify exit code 0 and output reports a draft was created"
+      ],
+      "threshold": "Zero scripts contain 'send' when --dangerously-send is absent; a draft is created"
+    },
+    {
+      "id": "C-139",
+      "category": "safety-model",
+      "description": "DEFAULT BEHAVIOUR: 'mailctl forward' WITHOUT '--dangerously-send' creates a draft and the generated AppleScript NEVER contains the 'send' verb",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl forward 12345 --to a@x.com --body \"FYI\"' with mock_osascript (no --dangerously-send)",
+        "Inspect every script string in mock_osascript.calls",
+        "Assert NONE of the script strings contain the AppleScript 'send' verb",
+        "Verify exit code 0 and output reports a draft was created"
+      ],
+      "threshold": "Zero scripts contain 'send' when --dangerously-send is absent; a draft is created"
+    },
+    {
+      "id": "C-140",
+      "category": "safety-model",
+      "description": "'--dangerously-send --yes' on reply triggers the send code path; verified via mocked AppleScript inspection only (NEVER by real send)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B --dangerously-send --yes' with mock_osascript",
+        "Inspect mock_osascript.calls and verify a script DOES contain the 'send' verb",
+        "Verify exit code 0 and output reports the message was sent",
+        "IMPORTANT: verified via mock only — never against real Mail.app"
+      ],
+      "threshold": "With --dangerously-send --yes, the generated AppleScript contains 'send'; verified via mock only"
+    },
+    {
+      "id": "C-141",
+      "category": "safety-model",
+      "description": "'--dangerously-send --yes' on forward triggers the send code path; verified via mocked AppleScript inspection only (NEVER by real send)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl forward 12345 --to a@x.com --body B --dangerously-send --yes' with mock_osascript",
+        "Inspect mock_osascript.calls and verify a script DOES contain the 'send' verb",
+        "Verify exit code 0 and output reports the message was sent",
+        "IMPORTANT: verified via mock only — never against real Mail.app"
+      ],
+      "threshold": "With --dangerously-send --yes, the generated AppleScript contains 'send'; verified via mock only"
+    },
+    {
+      "id": "C-142",
+      "category": "safety-model",
+      "description": "Confirmation prompt on reply/forward with --dangerously-send (without --yes): declining (default N or empty input) aborts without invoking 'send'",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B --dangerously-send' with CliRunner input='' (user presses enter — default No)",
+        "Verify NO script in mock_osascript.calls contains 'send'",
+        "Verify output states send was cancelled",
+        "Run 'mailctl forward 12345 --to a@x.com --body B --dangerously-send' with input='n\\n'",
+        "Verify NO 'send' verb in any script"
+      ],
+      "threshold": "Default-to-No confirmation prevents 'send' verb from reaching AppleScript for both reply and forward"
+    },
+    {
+      "id": "C-143",
+      "category": "safety-model",
+      "description": "'--yes' alone (without --dangerously-send) on reply/forward NEVER causes a send; it only suppresses the confirmation prompt",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B --yes' (NO --dangerously-send) with mock_osascript",
+        "Verify exit 0, a draft was created, and NO script contains 'send'",
+        "Run 'mailctl forward 12345 --to a@x.com --body B --yes' (NO --dangerously-send)",
+        "Verify exit 0, a draft was created, and NO script contains 'send'"
+      ],
+      "threshold": "--yes without --dangerously-send creates a draft, never sends"
+    },
+    {
+      "id": "C-144",
+      "category": "safety-model",
+      "description": "No env var, config file, or alias mechanism can set --dangerously-send implicitly on reply or forward commands; verified by code inspection",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect the reply and forward command implementations",
+        "Verify the --dangerously-send Typer option has NO 'envvar=' parameter",
+        "Grep src/ for any env var, config file, or default-flag mechanism that could set dangerously_send for reply or forward",
+        "Confirm the safety-as-architecture principle holds: the only way to send is the literal CLI flag"
+      ],
+      "threshold": "No implicit send mechanism exists for reply or forward"
+    },
+    {
+      "id": "C-145",
+      "category": "dry-run",
+      "description": "'--dry-run' on reply prints what WOULD happen without executing the reply AppleScript; original message fetch IS allowed (read-only)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B --dry-run' with mock_osascript",
+        "Verify exit code 0 and stdout describes a reply would be created as a DRAFT",
+        "Verify no script in mock_osascript.calls contains 'make new outgoing message' or 'send' (read-only fetch of original message is acceptable)",
+        "Run 'mailctl reply 12345 --body B --dangerously-send --yes --dry-run' and verify stdout describes a reply WOULD BE SENT, but no send is actually executed"
+      ],
+      "threshold": "--dry-run produces accurate description and never executes the reply/send AppleScript"
+    },
+    {
+      "id": "C-146",
+      "category": "dry-run",
+      "description": "'--dry-run' on forward prints what WOULD happen without executing the forward AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl forward 12345 --to a@x.com --body B --dry-run' with mock_osascript",
+        "Verify exit code 0 and stdout describes a forward would be created as a DRAFT",
+        "Verify no compose/send AppleScript was executed (read-only original-message fetch is acceptable)",
+        "Run 'mailctl forward 12345 --to a@x.com --body B --dangerously-send --yes --dry-run' and verify stdout describes WOULD SEND but no send is executed"
+      ],
+      "threshold": "--dry-run produces accurate description and never executes the forward/send AppleScript"
+    },
+    {
+      "id": "C-147",
+      "category": "threading",
+      "description": "Reply AppleScript preserves message threading by referencing the original message (e.g. setting In-Reply-To, using Mail.app's reply construct, or referencing the original message in the script)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B' with mock_osascript",
+        "Inspect the generated reply AppleScript",
+        "Verify the script references the original message id (12345) in a way that supports threading — e.g. by using Mail.app's 'reply' verb on the original message, or by setting reply-to headers, or by constructing the outgoing message with a reference to the original"
+      ],
+      "threshold": "Reply AppleScript includes a reference to the original message to support threading"
+    },
+    {
+      "id": "C-148",
+      "category": "output",
+      "description": "Reply and forward produce human-readable confirmation output stating whether a draft was created or message was sent, including the subject and account",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B' (draft path) and capture stdout",
+        "Verify stdout contains 'draft' (case-insensitive) and mentions the subject",
+        "Run 'mailctl forward 12345 --to a@x.com --body B' and verify similar draft confirmation",
+        "Run 'mailctl reply 12345 --body B --dangerously-send --yes' and verify stdout mentions 'sent'"
+      ],
+      "threshold": "Human-readable output clearly distinguishes draft creation from sending"
+    },
+    {
+      "id": "C-149",
+      "category": "output",
+      "description": "'--json' on reply and forward emits a structured JSON object with at least: action ('draft' or 'sent'), to (list), subject, and id; forward also includes the original message id",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl reply 12345 --body B --json' with mock_osascript",
+        "Parse stdout as JSON and verify it is an object with keys: action (== 'draft'), to, subject, and id",
+        "Run 'mailctl forward 12345 --to a@x.com --body B --json'",
+        "Parse stdout as JSON and verify action == 'draft', to contains 'a@x.com', and original_message_id or similar references '12345'"
+      ],
+      "threshold": "Valid JSON with required fields emitted for both reply and forward"
+    },
+    {
+      "id": "C-150",
+      "category": "error-handling",
+      "description": "Reply/forward with a nonexistent message ID produces a clear error mentioning the message was not found",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to simulate a 'message not found' error when fetching message 99999",
+        "Run 'mailctl reply 99999 --body B'",
+        "Verify exit code is non-zero",
+        "Verify error message on stderr mentions the message or 'not found'",
+        "Run 'mailctl forward 99999 --to a@x.com --body B' and verify the same error pattern"
+      ],
+      "threshold": "Nonexistent message ID produces non-zero exit and actionable error on stderr"
+    },
+    {
+      "id": "C-151",
+      "category": "error-handling",
+      "description": "Reply/forward when Mail.app is not running produces the same error pattern as compose and other commands",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to simulate Mail.app not running",
+        "Run 'mailctl reply 12345 --body B'",
+        "Verify exit code is non-zero and stderr mentions Mail.app",
+        "Verify the error follows the same pattern as compose (Sprint 5) and messages (Sprint 3)"
+      ],
+      "threshold": "Mail.app-not-running error is consistent across reply/forward and prior commands"
+    },
+    {
+      "id": "C-152",
+      "category": "cli-help",
+      "description": "'mailctl --help' lists 'reply' and 'forward' as top-level commands alongside 'compose', 'accounts', 'mailboxes', and 'messages'",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --help' via CliRunner",
+        "Verify the output lists 'reply' as a command",
+        "Verify the output lists 'forward' as a command",
+        "Verify 'compose', 'accounts', 'mailboxes', and 'messages' are still listed (regression)"
+      ],
+      "threshold": "'reply' and 'forward' visible at the top level alongside all prior commands"
+    },
+    {
+      "id": "C-153",
+      "category": "cli-help",
+      "description": "'mailctl reply --help' and 'mailctl forward --help' describe all options including --body, --body-file, --attach, --dangerously-send, --yes, --dry-run, --json, and (for reply) --all; help text warns about --dangerously-send",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl reply --help' via CliRunner",
+        "Verify help mentions: --body, --body-file, --attach, --dangerously-send, --yes, --dry-run, --json, --all",
+        "Verify --dangerously-send help includes a warning about sending",
+        "Run 'mailctl forward --help' via CliRunner",
+        "Verify help mentions: --to, --body, --body-file, --attach, --dangerously-send, --yes, --dry-run, --json"
+      ],
+      "threshold": "Help for both commands enumerates all options with a clear warning on --dangerously-send"
+    },
+    {
+      "id": "C-154",
+      "category": "testing",
+      "description": "Parametrised safety-model unit tests exist for reply and forward, covering at least 6 bypass-attempt scenarios each, all asserting no 'send' verb appears without --dangerously-send",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect tests/unit/ for reply/forward safety model tests",
+        "Verify parametrised tests cover at minimum: bare reply, reply --yes, reply --dry-run, reply --all, reply with --attach, reply with --body-file; and equivalent for forward",
+        "For each parametrisation, verify the test asserts NO 'send' verb in mock_osascript.calls",
+        "Run the tests and verify they all pass"
+      ],
+      "threshold": "Safety-model tests cover at least 6 reply and 6 forward bypass scenarios, all passing"
+    },
+    {
+      "id": "C-155",
+      "category": "testing",
+      "description": "Full test suite (pytest from project root) passes with zero failures, including all Sprint 1-5 tests and new Sprint 6 tests",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from the project root",
+        "Verify all tests pass (0 failures, 0 errors)",
+        "Verify Sprint 1-5 tests still pass (regression)"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-156",
+      "category": "code-quality",
+      "description": "Reply and forward implementations follow the established architecture: AppleScript generation in build_*_script() functions, thin Typer command handlers that delegate to perform/fetch functions, and use the shared output/error-handling utilities from prior sprints",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect the reply/forward implementation files",
+        "Verify build_reply_script() and build_forward_script() (or similarly named) functions construct the AppleScript",
+        "Verify the command handlers delegate to a perform_reply() / perform_forward() function rather than inlining engine calls",
+        "Verify shared utilities (resolve_body, _escape_applescript_string, handle_mail_error, render_error) are reused from compose or output modules, not duplicated",
+        "Verify the safety model implementation (--dangerously-send, confirmation, --dry-run) follows the same pattern as compose"
+      ],
+      "threshold": "Reply and forward follow the established build/perform/render pattern with code reuse from compose"
+    },
+    {
+      "id": "C-157",
+      "category": "regression",
+      "description": "All Sprint 1-5 commands still work: 'mailctl --version', accounts list, mailboxes list, messages list/show/search, and compose — with unchanged options and outputs",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version' and verify version output",
+        "Run 'mailctl --help' and verify all command groups are listed including the new reply/forward",
+        "Run the full Sprint 1-5 unit test suite and verify all tests pass"
+      ],
+      "threshold": "All Sprint 1-5 functionality preserved; no test regressions"
+    }
+  ],
+  "outOfScope": [
+    "Draft editing — modifying an existing reply/forward draft after creation (Sprint 8)",
+    "Message mark / move (Sprint 7)",
+    "Message delete (Sprint 8)",
+    "Doctor command (Sprint 9)",
+    "Shell completions (Sprint 10)",
+    "Integration tests against real Mail.app (Sprint 10)",
+    "HTML body composition — reply/forward body is plain text in v1",
+    "Inline forwarding of attachments from the original message — only new --attach attachments are supported in v1",
+    "Signature insertion — Mail.app may add signatures automatically; mailctl does not manage them",
+    "Verifying real email delivery — explicitly forbidden by CLAUDE.md safety guardrails. The send code path is verified via mocked osascript ONLY."
+  ],
+  "regressionSprints": [1, 2, 3, 4, 5],
+  "safetyNotes": {
+    "criticalConstraint": "Per /Users/claude/dev/cli.mail.app/CLAUDE.md, no test in this contract may cause a real email to be delivered. Every criterion that exercises the send code path uses mocked osascript subprocess inspection (C-140, C-141) or --dry-run assertion (C-145, C-146). The evaluator MUST NOT run 'mailctl reply --dangerously-send' or 'mailctl forward --dangerously-send' against real Mail.app to verify delivery — that pattern is explicitly forbidden by the project guardrails.",
+    "safeReadOnlyDomain": "The evaluator MAY freely run read-only commands against real Mail.app: list accounts, list mailboxes, list/show/search messages. These are non-destructive and were established as safe in prior sprints.",
+    "safeWriteDomain": "The evaluator MAY run 'mailctl reply <id> --body Test' or 'mailctl forward <id> --to <own-address> --body Test' (NO --dangerously-send) against real Mail.app to verify a draft appears in the Drafts folder, and then delete that draft. This is permitted per CLAUDE.md's safe-by-default testing domain. All send-path testing must be done via mocks."
+  }
+}
