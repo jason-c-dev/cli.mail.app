@@ -407,7 +407,8 @@ def register(messages_app: typer.Typer) -> None:
             )
         except AppleScriptError as exc:
             # Provide clear message-not-found error if applicable.
-            exc_str = str(exc).lower()
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
             if "not found" in exc_str:
                 ids = ", ".join(message_ids)
                 render_error(
@@ -491,7 +492,8 @@ def register(messages_app: typer.Typer) -> None:
                 account=account,
             )
         except AppleScriptError as exc:
-            exc_str = str(exc).lower()
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
             # Provide clear mailbox-not-found error if applicable.
             if "mailbox" in exc_str and ("not found" in exc_str or "doesn't exist" in exc_str or "can't get" in exc_str):
                 render_error(

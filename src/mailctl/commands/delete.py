@@ -264,7 +264,8 @@ def register(messages_app: typer.Typer) -> None:
                 account=account,
             )
         except AppleScriptError as exc:
-            exc_str = str(exc).lower()
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
             if "not found" in exc_str:
                 ids = ", ".join(message_ids)
                 render_error(

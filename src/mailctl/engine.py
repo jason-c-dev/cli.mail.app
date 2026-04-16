@@ -100,6 +100,17 @@ def run_applescript(script: str, *, timeout: float = DEFAULT_TIMEOUT) -> str:
     return result.stdout.strip()
 
 
+def normalize_error_text(text: str) -> str:
+    """Normalise a Mail.app error string for pattern matching.
+
+    Mail.app's error messages use typographic apostrophes (U+2019), not
+    straight ASCII apostrophes. Callers that grep the error text for
+    phrases like "can't get" would otherwise miss matches. This helper
+    converts to lowercase and normalises curly quotes.
+    """
+    return text.lower().replace("\u2019", "'").replace("\u2018", "'")
+
+
 def _raise_classified_error(stderr: str) -> None:
     """Inspect *stderr* and raise the most specific exception possible."""
     lower = stderr.lower()

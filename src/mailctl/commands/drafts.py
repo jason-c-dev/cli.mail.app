@@ -276,8 +276,158 @@ def _render_edit_dry_run(
 # --------------------------------------------------------------------------- #
 
 
+def build_drafts_list_script(account: str | None = None) -> str:
+    """Return AppleScript that enumerates drafts across accounts.
+
+    Output format (one line per draft, ``||``-delimited)::
+
+        account_name||draft_id||date||to||subject
+
+    Uses indexed access and per-message try blocks to tolerate
+    half-synced or missing-value messages (same pattern as messages list).
+    """
+    account_filter = ""
+    if account:
+        account_filter = f'if (name of acct) is not "{account}" then skipMe\n'
+
+    return f'''\
+tell application "Mail"
+    set allAccts to every account
+    set output to ""
+    repeat with acct in allAccts
+        set skipMe to false
+        {account_filter}
+        if not skipMe then
+            try
+                set dBox to mailbox "Drafts" of acct
+                set acctName to name of acct
+                set msgCount to count of messages of dBox
+                set upperBound to 200
+                if msgCount < upperBound then set upperBound to msgCount
+                if upperBound >= 1 then
+                    set msgs to messages 1 thru upperBound of dBox
+                    repeat with msg in msgs
+                        try
+                            set msgId to id of msg as string
+                        on error
+                            set msgId to ""
+                        end try
+                        try
+                            set msgDate to date received of msg as string
+                        on error
+                            set msgDate to ""
+                        end try
+                        try
+                            set msgSubject to subject of msg as string
+                        on error
+                            set msgSubject to "(no subject)"
+                        end try
+                        set toList to ""
+                        try
+                            repeat with addr in (every to recipient of msg)
+                                if toList is not "" then set toList to toList & ", "
+                                try
+                                    set toList to toList & (address of addr as string)
+                                on error
+                                    set toList to toList & "?"
+                                end try
+                            end repeat
+                        on error
+                            set toList to ""
+                        end try
+                        if msgId is not "" then
+                            if output is not "" then set output to output & linefeed
+                            set output to output & acctName & "||" & msgId & "||" & msgDate & "||" & toList & "||" & msgSubject
+                        end if
+                    end repeat
+                end if
+            on error
+                -- Account has no Drafts mailbox; skip silently.
+            end try
+        end if
+    end repeat
+    return output
+end tell'''
+
+
+def parse_drafts_list_output(raw: str) -> list[dict]:
+    """Parse the ``||``-delimited drafts output into structured data."""
+    if not raw.strip():
+        return []
+
+    drafts: list[dict] = []
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("||")
+        if len(parts) >= 5:
+            drafts.append({
+                "account": parts[0].strip(),
+                "id": parts[1].strip(),
+                "date": parts[2].strip(),
+                "to": parts[3].strip(),
+                "subject": parts[4].strip(),
+            })
+    return drafts
+
+
+def fetch_drafts(account: str | None = None) -> list[dict]:
+    """Fetch drafts from Mail.app via a single AppleScript call."""
+    script = build_drafts_list_script(account=account)
+    raw = run_applescript(script, timeout=60.0)
+    return parse_drafts_list_output(raw)
+
+
 def register(drafts_app: typer.Typer) -> None:
-    """Register the ``drafts edit`` command."""
+    """Register the ``drafts list`` and ``drafts edit`` commands."""
+
+    @drafts_app.command(
+        "list",
+        help="List drafts across accounts (or scoped to one with --account).",
+    )
+    def drafts_list(
+        ctx: typer.Context,
+        account: Optional[str] = typer.Option(
+            None, "--account", "-a",
+            help="Scope to a specific account name.",
+        ),
+        json_output: bool = typer.Option(
+            False, "--json",
+            help="Output results as JSON.",
+        ),
+    ) -> None:
+        """List draft messages from Mail.app."""
+        ctx.ensure_object(dict)
+        json_mode = json_output or ctx.obj.get("json", False)
+        no_color = ctx.obj.get("no_color", False)
+
+        try:
+            data = fetch_drafts(account=account)
+        except AppleScriptError as exc:
+            handle_mail_error(exc, no_color=no_color)
+
+        if json_mode:
+            sys.stdout.write(json.dumps(data, indent=2) + "\n")
+            return
+
+        if not data:
+            Console(no_color=no_color).print("No drafts found.")
+            return
+
+        from mailctl.output import ColumnDef, render_output
+        cols = [
+            ColumnDef(header="Account", key="account", max_width=20),
+            ColumnDef(header="ID", key="id", max_width=12),
+            ColumnDef(header="Date", key="date", max_width=30),
+            ColumnDef(header="To", key="to", max_width=35),
+            ColumnDef(header="Subject", key="subject", max_width=50),
+        ]
+        render_output(
+            data, cols,
+            json_mode=False, no_color=no_color,
+            title="Drafts",
+        )
 
     @drafts_app.command(
         "edit",
@@ -468,7 +618,8 @@ def register(drafts_app: typer.Typer) -> None:
                 remove_attach=remove_attach_list,
             )
         except AppleScriptError as exc:
-            exc_str = str(exc).lower()
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
             if "not found" in exc_str or "message not found" in exc_str:
                 render_error(
                     f'Message "{message_id}" not found. '

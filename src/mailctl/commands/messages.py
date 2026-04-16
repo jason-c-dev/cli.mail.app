@@ -49,6 +49,7 @@ def build_messages_list_script(
     *,
     account: str | None = None,
     mailbox: str = "INBOX",
+    fetch_cap: int = 500,
 ) -> str:
     """Return AppleScript that lists messages from a mailbox.
 
@@ -56,9 +57,22 @@ def build_messages_list_script(
 
         message_id||date||sender||subject||read_flag||flagged_flag
 
-    The script fetches metadata for all messages in a single osascript call.
+    Uses ``messages 1 thru N`` indexed access rather than ``every message`` —
+    the latter fails with AppleScript error -1741 on large IMAP mailboxes
+    whose messages are not fully synced. Each property access is wrapped in
+    ``try``/``on error`` so a single message with a missing value does not
+    abort the whole fetch.
+
     Filtering by unread/sender/subject/date is done in Python after fetching,
-    to keep the AppleScript simple and the batch call pattern intact.
+    to keep the AppleScript simple.
+
+    Parameters
+    ----------
+    fetch_cap:
+        Upper bound on how many messages AppleScript fetches. Mail.app
+        orders messages newest-first, so this gets the most recent
+        *fetch_cap* messages. Python then applies user filters and the
+        user-supplied ``--limit``.
     """
     if account:
         target = f'mailbox "{mailbox}" of account "{account}"'
@@ -66,21 +80,54 @@ def build_messages_list_script(
         target = f'mailbox "{mailbox}"'
 
     return f'''\
+with timeout of 120 seconds
 tell application "Mail"
+    set theBox to {target}
+    set msgCount to count of messages of theBox
+    set upperBound to {fetch_cap}
+    if msgCount < upperBound then set upperBound to msgCount
+    if upperBound < 1 then return ""
+    set msgs to messages 1 thru upperBound of theBox
     set output to ""
-    set msgs to every message of {target}
     repeat with msg in msgs
-        set msgId to id of msg as string
-        set msgDate to date received of msg as string
-        set msgSender to sender of msg
-        set msgSubject to subject of msg
-        set msgRead to read status of msg as string
-        set msgFlagged to flagged status of msg as string
-        if output is not "" then set output to output & linefeed
-        set output to output & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged
+        try
+            set msgId to id of msg as string
+        on error
+            set msgId to ""
+        end try
+        try
+            set msgDate to date received of msg as string
+        on error
+            set msgDate to ""
+        end try
+        try
+            set msgSender to sender of msg as string
+        on error
+            set msgSender to ""
+        end try
+        try
+            set msgSubject to subject of msg as string
+        on error
+            set msgSubject to ""
+        end try
+        try
+            set msgRead to read status of msg as string
+        on error
+            set msgRead to "false"
+        end try
+        try
+            set msgFlagged to flagged status of msg as string
+        on error
+            set msgFlagged to "false"
+        end try
+        if msgId is not "" then
+            if output is not "" then set output to output & linefeed
+            set output to output & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged
+        end if
     end repeat
     return output
-end tell'''
+end tell
+end timeout'''
 
 
 # --------------------------------------------------------------------------- #
@@ -231,8 +278,13 @@ def fetch_messages(
     Returns a list of message dicts, filtered and sorted (newest first),
     capped at *limit*. Raises :class:`AppleScriptError` on failure.
     """
-    script = build_messages_list_script(account=account, mailbox=mailbox)
-    raw = run_applescript(script)
+    # fetch_cap: give Python enough messages to filter/sort from. Capped to
+    # keep AppleScript responsive on large IMAP mailboxes (Gmail can have 100k+
+    # INBOX messages). Longer subprocess timeout to accommodate slow IMAP fetches.
+    fetch_cap = max(limit * 4, 50) if limit > 0 else 100
+    fetch_cap = min(fetch_cap, 300)
+    script = build_messages_list_script(account=account, mailbox=mailbox, fetch_cap=fetch_cap)
+    raw = run_applescript(script, timeout=120.0)
     messages = parse_messages_list_output(raw)
 
     # Apply post-fetch filters
@@ -475,50 +527,133 @@ def build_search_script(
             set AppleScript's text item delimiters to oldDelims'''
         body_field = ' & "||" & cleanBody'
 
+    # Per-mailbox fetch cap. Mail.app orders messages newest-first, so this
+    # gets the most recent N messages per mailbox. Python then applies filters.
+    fetch_cap = 200
+
+    msg_body_setup = ""
+    if include_body:
+        # Only compute body when include_body is set — avoids slow content-fetch
+        # on every message. Still wrapped in try for safety.
+        msg_body_setup = f'''
+        try{body_block}
+        on error
+            set cleanBody to ""
+        end try'''
+
     if mailbox:
         # Search a specific mailbox within the account.
         return f'''\
+with timeout of 180 seconds
 tell application "Mail"
     set output to ""
     set acct to account "{account}"
     set mbox to mailbox "{mailbox}" of acct
     set mboxName to name of mbox
-    set msgs to every message of mbox
+    set msgCount to count of messages of mbox
+    set upperBound to {fetch_cap}
+    if msgCount < upperBound then set upperBound to msgCount
+    if upperBound < 1 then return ""
+    set msgs to messages 1 thru upperBound of mbox
     repeat with msg in msgs
-        set msgId to id of msg as string
-        set msgDate to date received of msg as string
-        set msgSender to sender of msg
-        set msgSubject to subject of msg
-        set msgRead to read status of msg as string
-        set msgFlagged to flagged status of msg as string{body_block}
-        if output is not "" then set output to output & linefeed
-        set output to output & mboxName & "||" & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged{body_field}
+        try
+            set msgId to id of msg as string
+        on error
+            set msgId to ""
+        end try
+        try
+            set msgDate to date received of msg as string
+        on error
+            set msgDate to ""
+        end try
+        try
+            set msgSender to sender of msg as string
+        on error
+            set msgSender to ""
+        end try
+        try
+            set msgSubject to subject of msg as string
+        on error
+            set msgSubject to ""
+        end try
+        try
+            set msgRead to read status of msg as string
+        on error
+            set msgRead to "false"
+        end try
+        try
+            set msgFlagged to flagged status of msg as string
+        on error
+            set msgFlagged to "false"
+        end try{msg_body_setup}
+        if msgId is not "" then
+            if output is not "" then set output to output & linefeed
+            set output to output & mboxName & "||" & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged{body_field}
+        end if
     end repeat
     return output
-end tell'''
+end tell
+end timeout'''
     else:
         # Search all mailboxes in the account.
         return f'''\
+with timeout of 180 seconds
 tell application "Mail"
     set output to ""
     set acct to account "{account}"
     set mboxes to every mailbox of acct
     repeat with mbox in mboxes
-        set mboxName to name of mbox
-        set msgs to every message of mbox
-        repeat with msg in msgs
-            set msgId to id of msg as string
-            set msgDate to date received of msg as string
-            set msgSender to sender of msg
-            set msgSubject to subject of msg
-            set msgRead to read status of msg as string
-            set msgFlagged to flagged status of msg as string{body_block}
-            if output is not "" then set output to output & linefeed
-            set output to output & mboxName & "||" & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged{body_field}
-        end repeat
+        try
+            set mboxName to name of mbox
+            set msgCount to count of messages of mbox
+            set upperBound to {fetch_cap}
+            if msgCount < upperBound then set upperBound to msgCount
+            if upperBound >= 1 then
+                set msgs to messages 1 thru upperBound of mbox
+                repeat with msg in msgs
+                    try
+                        set msgId to id of msg as string
+                    on error
+                        set msgId to ""
+                    end try
+                    try
+                        set msgDate to date received of msg as string
+                    on error
+                        set msgDate to ""
+                    end try
+                    try
+                        set msgSender to sender of msg as string
+                    on error
+                        set msgSender to ""
+                    end try
+                    try
+                        set msgSubject to subject of msg as string
+                    on error
+                        set msgSubject to ""
+                    end try
+                    try
+                        set msgRead to read status of msg as string
+                    on error
+                        set msgRead to "false"
+                    end try
+                    try
+                        set msgFlagged to flagged status of msg as string
+                    on error
+                        set msgFlagged to "false"
+                    end try{msg_body_setup}
+                    if msgId is not "" then
+                        if output is not "" then set output to output & linefeed
+                        set output to output & mboxName & "||" & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged{body_field}
+                    end if
+                end repeat
+            end if
+        on error
+            -- Skip mailboxes that can't be read (system/virtual mailboxes etc)
+        end try
     end repeat
     return output
-end tell'''
+end tell
+end timeout'''
 
 
 # --------------------------------------------------------------------------- #
@@ -650,7 +785,7 @@ def fetch_search_results(
             mailbox=mailbox,
             include_body=include_body,
         )
-        raw = run_applescript(script)
+        raw = run_applescript(script, timeout=180.0)
         msgs = parse_search_output(raw, acct_name)
         all_messages.extend(msgs)
 
@@ -765,9 +900,34 @@ def register(messages_app: typer.Typer) -> None:
                 limit=limit,
             )
         except AppleScriptError as exc:
-            exc_str = str(exc).lower()
-            # Account not found — fetch known accounts for the error message.
-            if account and ("account" in exc_str or "can't get" in exc_str):
+            # Normalise curly/straight apostrophes — Mail.app uses typographic
+            # apostrophes in error messages (e.g. "Can’t get..."), so match both.
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
+            # Mailbox-not-found is the most common case when users pass an
+            # account + mailbox combination that doesn't exist (e.g. "INBOX"
+            # on an Exchange account that calls it "Inbox"). Check this
+            # before the broader account-not-found test, since the error
+            # "can't get mailbox X of account Y" matches both.
+            if "mailbox" in exc_str and ("not found" in exc_str or "can't get" in exc_str or "doesn't exist" in exc_str):
+                hint = f"Use 'mailctl mailboxes list"
+                if account:
+                    hint += f" --account {account}"
+                hint += "' to see available mailboxes."
+                render_error(
+                    f'Mailbox "{mailbox}" not found. {hint}',
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
+            # Account not found. "Can't get account X" from AppleScript
+            # means the account name doesn't resolve. Mailbox-case was already
+            # handled above, so "can't get" + "account" without "mailbox" is
+            # unambiguously an account problem.
+            if account and "account" in exc_str and (
+                "not found" in exc_str
+                or "doesn't exist" in exc_str
+                or ("can't get" in exc_str and "mailbox" not in exc_str)
+            ):
                 try:
                     known = parse_account_names_output(
                         run_applescript(build_account_names_script())
@@ -780,14 +940,6 @@ def register(messages_app: typer.Typer) -> None:
                     raise typer.Exit(code=EXIT_USAGE_ERROR)
                 except AppleScriptError:
                     pass  # Fall through to generic handling
-            # Mailbox not found
-            if "mailbox" in exc_str and ("not found" in exc_str or "can't get" in exc_str or "doesn't exist" in exc_str):
-                render_error(
-                    f'Mailbox "{mailbox}" not found. '
-                    f"Use 'mailctl mailboxes list' to see available mailboxes.",
-                    no_color=no_color,
-                )
-                raise typer.Exit(code=EXIT_USAGE_ERROR)
             handle_mail_error(exc, no_color=no_color)
 
         if not data:

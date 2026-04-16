@@ -360,8 +360,8 @@ def _dry_run_summary(
     dangerously_send: bool,
 ) -> str:
     """Render a human-readable dry-run summary."""
-    verb = "SEND" if dangerously_send else "create a DRAFT"
-    lines: list[str] = [f"[dry-run] Would {verb} a message with:"]
+    verb = "SEND this message" if dangerously_send else "create a DRAFT of this message"
+    lines: list[str] = [f"[dry-run] Would {verb}:"]
     lines.append(f"  From:    {from_account or '(default Mail.app account)'}")
     lines.append(f"  To:      {', '.join(to)}")
     if cc:

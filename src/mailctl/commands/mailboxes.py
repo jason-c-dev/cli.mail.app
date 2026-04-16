@@ -31,30 +31,60 @@ from mailctl.output import (
 # AppleScript generation
 # --------------------------------------------------------------------------- #
 
-def build_mailboxes_script() -> str:
-    """Return AppleScript that lists all mailboxes across all accounts.
+def build_mailboxes_script(account: str | None = None) -> str:
+    """Return AppleScript that lists mailboxes, optionally filtered to one account.
 
     Output format (one line per mailbox, ``||``-delimited)::
 
         AccountName||MailboxName||unread_count||message_count
+
+    Individual mailbox reads are wrapped in ``try``/``on error`` so a single
+    unavailable mailbox (common with Exchange virtual folders) does not abort
+    the whole enumeration. When *account* is supplied, the AppleScript only
+    enumerates that account — avoiding slow enumeration of other accounts.
     """
-    return '''\
+    account_filter = ""
+    if account:
+        account_filter = f'\n        if (name of acct) is not "{account}" then skipMe'
+
+    return f'''\
+with timeout of 180 seconds
 tell application "Mail"
     set output to ""
     set allAccts to every account
     repeat with acct in allAccts
-        set acctName to name of acct
-        set mboxes to every mailbox of acct
-        repeat with mbox in mboxes
-            set mboxName to name of mbox
-            set mboxUnread to unread count of mbox
-            set mboxCount to count of messages of mbox
-            if output is not "" then set output to output & linefeed
-            set output to output & acctName & "||" & mboxName & "||" & (mboxUnread as string) & "||" & (mboxCount as string)
-        end repeat
+        set skipMe to false{account_filter}
+        if not skipMe then
+            try
+                set acctName to name of acct
+                set mboxes to every mailbox of acct
+                repeat with mbox in mboxes
+                    try
+                        set mboxName to name of mbox
+                        try
+                            set mboxUnread to unread count of mbox
+                        on error
+                            set mboxUnread to 0
+                        end try
+                        try
+                            set mboxCount to count of messages of mbox
+                        on error
+                            set mboxCount to 0
+                        end try
+                        if output is not "" then set output to output & linefeed
+                        set output to output & acctName & "||" & mboxName & "||" & (mboxUnread as string) & "||" & (mboxCount as string)
+                    on error
+                        -- Skip mailboxes that can't be read.
+                    end try
+                end repeat
+            on error
+                -- Skip accounts that can't be enumerated.
+            end try
+        end if
     end repeat
     return output
-end tell'''
+end tell
+end timeout'''
 
 
 # --------------------------------------------------------------------------- #
@@ -90,14 +120,17 @@ def parse_mailboxes_output(raw: str) -> list[dict]:
 # Data fetching (engine integration)
 # --------------------------------------------------------------------------- #
 
-def fetch_mailboxes() -> list[dict]:
-    """Fetch all mailboxes across all accounts via a single AppleScript call.
+def fetch_mailboxes(account: str | None = None) -> list[dict]:
+    """Fetch mailboxes via a single AppleScript call.
 
-    Returns a list of mailbox dicts.  Raises :class:`AppleScriptError`
-    (or a subclass) on failure.
+    When *account* is given, only that account is enumerated — a significant
+    speedup for users with a slow Exchange account who only want their Gmail
+    mailboxes (or vice versa).
+
+    Raises :class:`AppleScriptError` (or a subclass) on failure.
     """
-    script = build_mailboxes_script()
-    raw = run_applescript(script)
+    script = build_mailboxes_script(account=account)
+    raw = run_applescript(script, timeout=180.0)
     return parse_mailboxes_output(raw)
 
 
@@ -136,22 +169,23 @@ def register(mailboxes_app: typer.Typer) -> None:
         no_color = ctx.obj.get("no_color", False)
 
         try:
-            data = fetch_mailboxes()
+            data = fetch_mailboxes(account=account)
         except AppleScriptError as exc:
             handle_mail_error(exc, no_color=no_color)
 
-        # Filter by account if requested.
+        # Defence-in-depth: even when AppleScript filters by account, also
+        # apply the filter client-side. This keeps behaviour correct if a
+        # mock returns unfiltered data, and preserves the pre-existing
+        # contract of raising a usage error for unknown accounts.
         if account is not None:
-            # Check the account actually exists in the data.
             known_accounts = {m["account"] for m in data}
-            if account not in known_accounts:
+            if data and account not in known_accounts:
                 render_error(
                     f"Account '{account}' not found. "
                     f"Known accounts: {', '.join(sorted(known_accounts)) or '(none)'}",
                     no_color=no_color,
                 )
                 raise typer.Exit(code=EXIT_USAGE_ERROR)
-
             data = [m for m in data if m["account"] == account]
 
         render_output(

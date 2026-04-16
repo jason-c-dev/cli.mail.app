@@ -707,7 +707,8 @@ def register(app: typer.Typer) -> None:
         try:
             original = fetch_original_message(message_id)
         except AppleScriptError as exc:
-            exc_str = str(exc).lower()
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
             if "not found" in exc_str or "can't get" in exc_str:
                 render_error(
                     f'Message "{message_id}" not found. '
@@ -921,7 +922,8 @@ def register(app: typer.Typer) -> None:
         try:
             original = fetch_original_message(message_id)
         except AppleScriptError as exc:
-            exc_str = str(exc).lower()
+            from mailctl.engine import normalize_error_text
+            exc_str = normalize_error_text(str(exc))
             if "not found" in exc_str or "can't get" in exc_str:
                 render_error(
                     f'Message "{message_id}" not found. '
