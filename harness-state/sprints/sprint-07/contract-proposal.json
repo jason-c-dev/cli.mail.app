@@ -1,0 +1,378 @@
+{
+  "sprintNumber": 7,
+  "name": "Message Updates (Mark, Flag, Move)",
+  "theme": "Triage your inbox — mark, flag, and file messages without leaving the terminal.",
+  "features": ["Message Flags & Move (3.10)"],
+  "criteria": [
+    {
+      "id": "C-161",
+      "category": "mark-command",
+      "description": "'mailctl messages mark <message-id> --read' command exists as a subcommand of 'messages', accepts a positional message-id argument, and succeeds (exit 0) with mocked osascript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read' via CliRunner with mock_osascript configured to return success",
+        "Verify exit code is 0",
+        "Verify mock_osascript was invoked with at least one call",
+        "Inspect the generated AppleScript and verify it sets the read status of the message to true"
+      ],
+      "threshold": "Command succeeds with exit 0 and the generated AppleScript sets read status to true"
+    },
+    {
+      "id": "C-162",
+      "category": "mark-command",
+      "description": "'mailctl messages mark <message-id> --unread' sets the read status to false in the generated AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --unread' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the read status of the message to false"
+      ],
+      "threshold": "Generated AppleScript sets read status to false for --unread"
+    },
+    {
+      "id": "C-163",
+      "category": "mark-command",
+      "description": "'mailctl messages mark <message-id> --flagged' sets the flagged status to true in the generated AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --flagged' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the flagged status of the message to true"
+      ],
+      "threshold": "Generated AppleScript sets flagged status to true for --flagged"
+    },
+    {
+      "id": "C-164",
+      "category": "mark-command",
+      "description": "'mailctl messages mark <message-id> --unflagged' sets the flagged status to false in the generated AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --unflagged' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the flagged status of the message to false"
+      ],
+      "threshold": "Generated AppleScript sets flagged status to false for --unflagged"
+    },
+    {
+      "id": "C-165",
+      "category": "mark-combined",
+      "description": "Multiple flags can be combined in a single mark invocation: '--read --flagged' sets both in one call; '--unread --unflagged' sets both in one call",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read --flagged' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets BOTH read status to true AND flagged status to true",
+        "Run 'mailctl messages mark 12345 --unread --unflagged'",
+        "Verify the AppleScript sets read status to false AND flagged status to false"
+      ],
+      "threshold": "Both flags are applied in a single AppleScript invocation when combined"
+    },
+    {
+      "id": "C-166",
+      "category": "mark-validation",
+      "description": "'mailctl messages mark <id>' with no flags (no --read/--unread/--flagged/--unflagged) produces a usage error and non-zero exit code",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345' (no flags) via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify stderr or output mentions that at least one flag (--read, --unread, --flagged, --unflagged) is required"
+      ],
+      "threshold": "No-flag invocation fails with a clear error directing the user to specify a flag"
+    },
+    {
+      "id": "C-167",
+      "category": "mark-validation",
+      "description": "Contradictory flags '--read --unread' or '--flagged --unflagged' in the same invocation produce a usage error and non-zero exit code",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read --unread' via CliRunner",
+        "Verify exit code is non-zero and error message mentions the contradiction",
+        "Run 'mailctl messages mark 12345 --flagged --unflagged' via CliRunner",
+        "Verify exit code is non-zero and error message mentions the contradiction"
+      ],
+      "threshold": "Contradictory flags fail fast with a clear error, never reaching AppleScript"
+    },
+    {
+      "id": "C-168",
+      "category": "bulk-operations",
+      "description": "'mailctl messages mark' accepts multiple message IDs and applies the flag change to all of them in a batched AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 100 200 300 --read' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify all three message IDs (100, 200, 300) are referenced",
+        "Verify the operation is batched into a minimal number of osascript calls (ideally one)"
+      ],
+      "threshold": "Multiple IDs accepted and all processed; batched into one osascript call"
+    },
+    {
+      "id": "C-169",
+      "category": "mark-account",
+      "description": "'mailctl messages mark <id> --read --account <name>' scopes the AppleScript to the specified account",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read --account \"Work\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it references account \"Work\" when locating the message"
+      ],
+      "threshold": "AppleScript scoped to the specified account when --account is provided"
+    },
+    {
+      "id": "C-170",
+      "category": "move-command",
+      "description": "'mailctl messages move <message-id> --to <mailbox>' command exists as a subcommand of 'messages', moves a message to the target mailbox, and succeeds (exit 0) with mocked osascript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages move 12345 --to \"Archive\"' via CliRunner with mock_osascript configured to return success",
+        "Verify exit code is 0",
+        "Verify mock_osascript was invoked",
+        "Inspect the generated AppleScript and verify it moves the message to mailbox \"Archive\""
+      ],
+      "threshold": "Command succeeds with exit 0 and the generated AppleScript moves the message to the target mailbox"
+    },
+    {
+      "id": "C-171",
+      "category": "move-command",
+      "description": "'mailctl messages move <id> --to <mailbox> --account <name>' scopes both the source message lookup and target mailbox to the specified account",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages move 12345 --to \"Archive\" --account \"Work\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it references account \"Work\" for both the source message and target mailbox"
+      ],
+      "threshold": "Both source and target are scoped to the specified account"
+    },
+    {
+      "id": "C-172",
+      "category": "move-validation",
+      "description": "'mailctl messages move <id>' without '--to' produces a usage error and non-zero exit code",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages move 12345' (no --to) via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify error message indicates --to is required"
+      ],
+      "threshold": "Missing --to fails with a clear usage error"
+    },
+    {
+      "id": "C-173",
+      "category": "bulk-operations",
+      "description": "'mailctl messages move' accepts multiple message IDs and moves all of them to the target mailbox in a batched AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages move 100 200 300 --to \"Archive\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify all three message IDs are referenced and moved to \"Archive\"",
+        "Verify the operation is batched into a minimal number of osascript calls (ideally one)"
+      ],
+      "threshold": "Multiple IDs accepted and all moved; batched into one osascript call"
+    },
+    {
+      "id": "C-174",
+      "category": "dry-run",
+      "description": "'--dry-run' on 'mailctl messages mark' prints what WOULD be changed (message IDs, which flags) without executing any AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read --flagged --dry-run' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Verify stdout describes the intended operation (message ID, flags to be set)",
+        "Verify mock_osascript was NOT called (zero osascript invocations)"
+      ],
+      "threshold": "--dry-run prints the planned changes and executes zero osascript calls"
+    },
+    {
+      "id": "C-175",
+      "category": "dry-run",
+      "description": "'--dry-run' on 'mailctl messages move' prints what WOULD be moved (message IDs, target mailbox) without executing any AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages move 12345 --to \"Archive\" --dry-run' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Verify stdout describes the intended move (message ID, target mailbox)",
+        "Verify mock_osascript was NOT called (zero osascript invocations)"
+      ],
+      "threshold": "--dry-run prints the planned move and executes zero osascript calls"
+    },
+    {
+      "id": "C-176",
+      "category": "dry-run",
+      "description": "'--dry-run' with multiple IDs on both mark and move lists ALL affected message IDs in the dry-run output",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 100 200 300 --read --dry-run'",
+        "Verify stdout mentions all three IDs (100, 200, 300)",
+        "Run 'mailctl messages move 100 200 300 --to \"Trash\" --dry-run'",
+        "Verify stdout mentions all three IDs (100, 200, 300) and the target mailbox \"Trash\""
+      ],
+      "threshold": "All message IDs listed in dry-run output for both mark and move"
+    },
+    {
+      "id": "C-177",
+      "category": "output",
+      "description": "Mark and move produce human-readable confirmation output on success stating which messages were updated and what changed",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read' and capture stdout",
+        "Verify stdout contains confirmation text mentioning the message ID and that it was marked as read",
+        "Run 'mailctl messages move 12345 --to \"Archive\"' and capture stdout",
+        "Verify stdout contains confirmation mentioning the message ID and the target mailbox"
+      ],
+      "threshold": "Human-readable confirmation output for both mark and move operations"
+    },
+    {
+      "id": "C-178",
+      "category": "output",
+      "description": "'--json' on mark and move emits structured JSON with at least: action, message_ids (list), and the applied changes (flags for mark, target mailbox for move)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages mark 12345 --read --flagged --json' with mock_osascript",
+        "Parse stdout as JSON and verify it is an object with keys: action, message_ids (list containing '12345'), and applied changes (read: true, flagged: true)",
+        "Run 'mailctl messages move 12345 --to \"Archive\" --json' with mock_osascript",
+        "Parse stdout as JSON and verify it has: action, message_ids, and target_mailbox or equivalent"
+      ],
+      "threshold": "Valid JSON with required fields emitted for both mark and move"
+    },
+    {
+      "id": "C-179",
+      "category": "error-handling",
+      "description": "Mark and move with a nonexistent message ID (simulated via mock error) produce a clear error mentioning the message was not found",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to simulate a script error when processing message ID 99999",
+        "Run 'mailctl messages mark 99999 --read'",
+        "Verify exit code is non-zero and stderr mentions the error",
+        "Run 'mailctl messages move 99999 --to \"Archive\"'",
+        "Verify exit code is non-zero and stderr mentions the error"
+      ],
+      "threshold": "Nonexistent message ID produces non-zero exit and actionable error on stderr"
+    },
+    {
+      "id": "C-180",
+      "category": "error-handling",
+      "description": "Mark and move when Mail.app is not running produce the same error pattern as all prior commands (consistent error handling via shared utilities)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to simulate Mail.app not running",
+        "Run 'mailctl messages mark 12345 --read'",
+        "Verify exit code is non-zero and stderr mentions Mail.app",
+        "Run 'mailctl messages move 12345 --to \"Archive\"'",
+        "Verify exit code is non-zero and stderr mentions Mail.app",
+        "Verify errors use handle_mail_error or equivalent from the shared output module"
+      ],
+      "threshold": "Mail.app-not-running error is consistent across mark/move and all prior commands"
+    },
+    {
+      "id": "C-181",
+      "category": "cli-help",
+      "description": "'mailctl messages --help' lists 'mark' and 'move' as subcommands alongside existing 'list', 'show', and 'search'",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl messages --help' via CliRunner",
+        "Verify output lists 'mark' as a subcommand",
+        "Verify output lists 'move' as a subcommand",
+        "Verify existing subcommands 'list', 'show', 'search' are still present (regression)"
+      ],
+      "threshold": "'mark' and 'move' visible in messages help alongside all prior subcommands"
+    },
+    {
+      "id": "C-182",
+      "category": "cli-help",
+      "description": "'mailctl messages mark --help' describes the positional MESSAGE_IDS argument and all flag options (--read, --unread, --flagged, --unflagged, --account, --dry-run, --json)",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl messages mark --help' via CliRunner",
+        "Verify help mentions: MESSAGE_IDS (positional, multiple), --read, --unread, --flagged, --unflagged, --account, --dry-run, --json"
+      ],
+      "threshold": "Help for mark enumerates the positional argument and all options"
+    },
+    {
+      "id": "C-183",
+      "category": "cli-help",
+      "description": "'mailctl messages move --help' describes the positional MESSAGE_IDS argument and all options (--to, --account, --dry-run, --json)",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl messages move --help' via CliRunner",
+        "Verify help mentions: MESSAGE_IDS (positional, multiple), --to (required), --account, --dry-run, --json"
+      ],
+      "threshold": "Help for move enumerates the positional argument and all options"
+    },
+    {
+      "id": "C-184",
+      "category": "architecture",
+      "description": "Mark and move implementations follow the established build/perform/register pattern: AppleScript in build_*_script() functions, thin Typer handlers, shared output/error-handling utilities reused from prior sprints",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect the mark/move implementation",
+        "Verify build_mark_script() or build_mark_messages_script() and build_move_script() or build_move_message_script() functions construct the AppleScript",
+        "Verify command handlers use handle_mail_error from mailctl.output for error handling",
+        "Verify render_output or render_error is used for output, not ad-hoc print statements for structured data",
+        "Verify the code reuses existing patterns (e.g. _escape_applescript_string if needed, run_applescript from engine)"
+      ],
+      "threshold": "Mark and move follow the established architecture with code reuse from prior sprints"
+    },
+    {
+      "id": "C-185",
+      "category": "testing",
+      "description": "Comprehensive unit tests exist for mark covering: single ID --read, --unread, --flagged, --unflagged, combined flags, bulk IDs, --account scoping, --dry-run, --json, no-flags error, contradictory flags error",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect tests/unit/ for mark command tests",
+        "Verify tests cover at minimum: --read, --unread, --flagged, --unflagged, combined --read --flagged, bulk (3+ IDs), --account, --dry-run, --json, no-flags error, contradictory flags error",
+        "Run the mark tests and verify they all pass"
+      ],
+      "threshold": "At least 11 mark test cases covering the above scenarios, all passing"
+    },
+    {
+      "id": "C-186",
+      "category": "testing",
+      "description": "Comprehensive unit tests exist for move covering: single ID move, bulk IDs, --account scoping, --dry-run, --json, missing --to error, error handling for nonexistent messages",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect tests/unit/ for move command tests",
+        "Verify tests cover at minimum: single ID move, bulk (3+ IDs), --account, --dry-run, --json, missing --to error, AppleScript error handling",
+        "Run the move tests and verify they all pass"
+      ],
+      "threshold": "At least 7 move test cases covering the above scenarios, all passing"
+    },
+    {
+      "id": "C-187",
+      "category": "testing",
+      "description": "Full test suite (pytest from project root) passes with zero failures, including all Sprint 1-6 tests and new Sprint 7 tests",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from the project root",
+        "Verify all tests pass (0 failures, 0 errors)",
+        "Verify Sprint 1-6 tests still pass (regression)"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-188",
+      "category": "regression",
+      "description": "All Sprint 1-6 commands still work: 'mailctl --version', accounts list, mailboxes list, messages list/show/search, compose, reply, forward — with unchanged options and outputs",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version' and verify version output",
+        "Run 'mailctl --help' and verify all command groups are listed including accounts, mailboxes, messages, compose, reply, forward",
+        "Run the full Sprint 1-6 unit test suite and verify all tests pass"
+      ],
+      "threshold": "All Sprint 1-6 functionality preserved; no test regressions"
+    }
+  ],
+  "outOfScope": [
+    "Draft editing — modifying an existing draft's subject/body/recipients (Sprint 8)",
+    "Message delete — move to Trash or permanent delete with confirmation (Sprint 8)",
+    "Doctor command (Sprint 9)",
+    "Shell completions (Sprint 10)",
+    "Integration tests against real Mail.app (Sprint 10)",
+    "Move between accounts — moving a message from one account to another is not supported by Mail.app's AppleScript and is out of scope",
+    "Colour-coded status indicators in mark output — the mark confirmation is plain text in v1; visual improvements can come in Sprint 10 polish",
+    "Undo/revert — no mechanism to undo a mark or move operation in v1"
+  ],
+  "regressionSprints": [1, 2, 3, 4, 5, 6],
+  "safetyNotes": {
+    "readOnlyDomain": "Mark (read/unread, flag/unflag) and move are state-change operations but NOT send operations. They do not trigger email delivery and are NOT subject to the --dangerously-send safety model. These are standard mailbox-management operations.",
+    "evalTestingSafety": "The evaluator MAY run 'mailctl messages mark' and 'mailctl messages move' against real Mail.app messages PROVIDED the test reverses the state change (e.g. mark read then mark unread, move to folder then move back). Per CLAUDE.md, state changes that cannot be cleanly reversed should use mocks.",
+    "noSendPath": "None of the mark or move operations generate AppleScript containing a 'send' verb. If any generated script contains 'send', that is a bug."
+  }
+}
