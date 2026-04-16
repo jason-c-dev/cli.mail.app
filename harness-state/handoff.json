@@ -1,9 +1,26 @@
 {
   "projectName": "mailctl",
-  "completedSprints": [1, 2, 3, 4, 5],
-  "currentSprint": 6,
+  "completedSprints": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "currentSprint": 7,
   "totalSprints": 10,
-  "completedFeatures": ["AppleScript Engine", "Output System", "Accounts List", "Mailboxes List", "Message Listing", "Message Show", "Cross-Account Search", "Compose", "Safety Model"],
+  "completedFeatures": [
+    "AppleScript Engine",
+    "Output System",
+    "Accounts List",
+    "Mailboxes List",
+    "Message Listing",
+    "Message Show",
+    "Cross-Account Search",
+    "Compose",
+    "Safety Model"
+  ],
   "keyFiles": {
     "cli": "src/mailctl/cli.py",
     "engine": "src/mailctl/engine.py",
@@ -21,8 +38,8 @@
   "devServerPort": 0,
   "git": {
     "harnessBranch": "main",
-    "latestTag": "harness/sprint-05/pass",
-    "latestMergeSha": "ed4183dcc6a93ff3a41f29359fc0854a338e6118",
+    "latestTag": "harness/sprint-06/pass",
+    "latestMergeSha": "108d9825cb00b290cf3ba6023206c8eb5df12a0c",
     "prNumbers": []
   }
 }
