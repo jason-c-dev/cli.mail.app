@@ -1,0 +1,196 @@
+{
+  "sprintNumber": 8,
+  "overallResult": "PASS",
+  "passCount": 31,
+  "failCount": 0,
+  "criteriaResults": [
+    {
+      "id": "C-189",
+      "result": "PASS",
+      "evidence": "'mailctl drafts edit 12345 --subject \"New subject\"' exits 0 with mock_osascript. osascript invoked. Generated AppleScript contains '\"12345\"' targeting the draft by message ID. 3 tests covering this criterion all pass."
+    },
+    {
+      "id": "C-190",
+      "result": "PASS",
+      "evidence": "Generated AppleScript contains 'set subject of targetMsg to' with the value 'Updated meeting notes'. Exit code 0. 2 tests pass."
+    },
+    {
+      "id": "C-191",
+      "result": "PASS",
+      "evidence": "Generated AppleScript contains 'set content of targetMsg to' with 'Updated body content'. Exit code 0. 2 tests pass."
+    },
+    {
+      "id": "C-192",
+      "result": "PASS",
+      "evidence": "Body read from temp file ('Body from file') appears in generated AppleScript via 'set content of targetMsg to'. Non-existent --body-file produces non-zero exit. 2 tests pass."
+    },
+    {
+      "id": "C-193",
+      "result": "PASS",
+      "evidence": "Combining --body and --body-file produces non-zero exit code and output contains 'mutually exclusive'. 1 test passes."
+    },
+    {
+      "id": "C-194",
+      "result": "PASS",
+      "evidence": "'--to alice@example.com --to bob@example.com' generates AppleScript that deletes existing to recipients then creates new ones for both addresses. Exit code 0. 1 test passes."
+    },
+    {
+      "id": "C-195",
+      "result": "PASS",
+      "evidence": "'--cc cc@example.com' generates 'delete every cc recipient' then adds cc@example.com. '--bcc bcc@example.com' generates 'delete every bcc recipient' then adds bcc@example.com. Both exit 0. 2 tests pass."
+    },
+    {
+      "id": "C-196",
+      "result": "PASS",
+      "evidence": "'--add-to new@example.com' generates 'make new to recipient' WITHOUT 'delete every to recipient' (appends only). '--remove-to old@example.com' generates script containing 'old@example.com' and 'delete r'. Both exit 0. 2 tests pass."
+    },
+    {
+      "id": "C-197",
+      "result": "PASS",
+      "evidence": "Combining '--to alice@example.com --add-to bob@example.com' produces non-zero exit code. Output mentions both '--to' and '--add-to'. 1 test passes."
+    },
+    {
+      "id": "C-198",
+      "result": "PASS",
+      "evidence": "'--attach <tmpfile>' generates 'make new attachment' in AppleScript with the file path. Non-existent attachment path fails with 'does not exist' error before any AppleScript runs. 2 tests pass."
+    },
+    {
+      "id": "C-199",
+      "result": "PASS",
+      "evidence": "'--remove-attach \"report.pdf\"' generates AppleScript containing 'report.pdf' and 'delete att'. Exit code 0. 1 test passes."
+    },
+    {
+      "id": "C-200",
+      "result": "PASS",
+      "evidence": "'--subject \"New Subject\" --body \"New body\" --add-to extra@example.com' in one invocation generates AppleScript with all three changes. Only 1 osascript call made (batched). Exit code 0. 1 test passes."
+    },
+    {
+      "id": "C-201",
+      "result": "PASS",
+      "evidence": "'mailctl drafts edit 12345' with no edit options produces non-zero exit code. Output contains 'at least one' edit option message. 2 tests pass."
+    },
+    {
+      "id": "C-202",
+      "result": "PASS",
+      "evidence": "'--dry-run' with --subject and --body exits 0, output contains '12345', 'subject', and 'body'. mock_osascript has zero calls (no AppleScript executed). 3 tests pass."
+    },
+    {
+      "id": "C-203",
+      "result": "PASS",
+      "evidence": "'--json' emits valid JSON with action='edited', message_id='12345', and changes dict containing 'subject'. Exit code 0. 1 test passes."
+    },
+    {
+      "id": "C-204",
+      "result": "PASS",
+      "evidence": "'mailctl messages delete 12345' exits 0. osascript invoked. Generated AppleScript contains 'Trash' and 'move msg to' (not 'delete msg'). 4 tests pass."
+    },
+    {
+      "id": "C-205",
+      "result": "PASS",
+      "evidence": "'--permanent' with input 'y' exits 0, generates 'delete msg' in AppleScript. With input 'n' exits 0 gracefully with zero osascript calls. With empty input (default N) aborts with zero osascript calls. 4 tests pass."
+    },
+    {
+      "id": "C-206",
+      "result": "PASS",
+      "evidence": "'--permanent --yes' exits 0 without requiring any stdin input. osascript invoked. No '[y/N]' prompt in output. 3 tests pass."
+    },
+    {
+      "id": "C-207",
+      "result": "PASS",
+      "evidence": "'--yes' alone (without --permanent) exits 0, still moves to Trash (script contains 'Trash', not 'delete msg'), no confirmation prompt shown. 2 tests pass."
+    },
+    {
+      "id": "C-208",
+      "result": "PASS",
+      "evidence": "'messages delete 100 200 300' exits 0. Generated AppleScript contains '\"100\"', '\"200\"', '\"300\"'. Only 1 osascript call (batched). 3 tests pass."
+    },
+    {
+      "id": "C-209",
+      "result": "PASS",
+      "evidence": "'--account \"Work\"' scopes the AppleScript: script contains 'account \"Work\"'. Exit code 0. 1 test passes."
+    },
+    {
+      "id": "C-210",
+      "result": "PASS",
+      "evidence": "'--dry-run' for default delete exits 0, output mentions '12345' and 'trash', zero osascript calls. '--dry-run --permanent' mentions 'permanent', zero osascript calls. 5 tests pass."
+    },
+    {
+      "id": "C-211",
+      "result": "PASS",
+      "evidence": "Human output for default delete mentions 'trash'. '--json' for default: valid JSON with action='trashed', message_ids=['12345'], permanent=false. '--json --permanent --yes': action='deleted', permanent=true. 3 tests pass."
+    },
+    {
+      "id": "C-212",
+      "result": "PASS",
+      "evidence": "Mock error on delete produces non-zero exit code. Mock error on drafts edit produces non-zero exit code. Both use handle_mail_error for rendering. 4 tests pass (2 delete, 2 drafts edit)."
+    },
+    {
+      "id": "C-213",
+      "result": "PASS",
+      "evidence": "Verified via CLI: 'mailctl drafts --help' lists 'edit'. 'mailctl drafts edit --help' shows MESSAGE_ID positional and all 12 options: --subject, --body, --body-file, --to, --cc, --bcc, --add-to, --remove-to, --attach, --remove-attach, --dry-run, --json. 2 tests pass."
+    },
+    {
+      "id": "C-214",
+      "result": "PASS",
+      "evidence": "Verified via CLI: 'mailctl messages --help' lists delete alongside list, show, search, mark, move. 'mailctl messages delete --help' shows MESSAGE_IDS positional (multiple), --permanent, --yes, --account, --dry-run, --json. 3 tests pass."
+    },
+    {
+      "id": "C-215",
+      "result": "PASS",
+      "evidence": "Code inspection confirms: both drafts.py and delete.py import run_applescript from mailctl.engine, handle_mail_error and render_error from mailctl.output. AppleScript generated in build_edit_draft_script() and build_delete_messages_script() functions. Thin Typer handlers delegate to perform_* functions. _escape_applescript_string reused in drafts.py. Architecture tests verify importability."
+    },
+    {
+      "id": "C-216",
+      "result": "PASS",
+      "evidence": "35 test cases collected in test_drafts_edit.py covering: --subject (2), --body (2), --body-file (2), body conflict (1), --to (1), --cc (1), --bcc (1), --add-to (1), --remove-to (1), --to+--add-to conflict (1), --attach (2), --remove-attach (1), combined (1), no-options (2), --dry-run (3), --json (1), error handling (2), help (2), architecture (5), safety (1). All 35 pass. Threshold of 16 exceeded."
+    },
+    {
+      "id": "C-217",
+      "result": "PASS",
+      "evidence": "36 test cases collected in test_delete.py covering: default Trash (4), --permanent+y (2), --permanent+n (1), --permanent default N (1), --permanent --yes (3), --yes alone (2), bulk 3 IDs (3), --account (1), --dry-run Trash (3), --dry-run permanent (2), --json Trash (1), --json permanent (1), human output (1), error handling (2), help (3), architecture (6). All 36 pass. Threshold of 12 exceeded."
+    },
+    {
+      "id": "C-218",
+      "result": "PASS",
+      "evidence": "Full pytest run: 503 tests collected, 503 passed, 0 failures, 0 errors. Exit code 0. All Sprint 1-7 tests and new Sprint 8 tests pass together."
+    },
+    {
+      "id": "C-219",
+      "result": "PASS",
+      "evidence": "'mailctl --version' outputs 'mailctl 0.1.0'. 'mailctl --help' lists all command groups: accounts, mailboxes, messages, compose, reply, forward, and new drafts. Full Sprint 1-7 unit test suite passes (432 pre-existing tests + 71 new = 503 total, 0 failures)."
+    }
+  ],
+  "regressionResults": {
+    "sprints": [1, 2, 3, 4, 5, 6, 7],
+    "result": "PASS",
+    "evidence": "All 432 Sprint 1-7 tests pass within the full suite of 503 tests. Zero failures, zero errors. All prior commands (accounts list, mailboxes list, messages list/show/search/mark/move, compose, reply, forward) verified working via test suite."
+  },
+  "holisticScores": {
+    "cliErgonomics": {
+      "score": 9,
+      "notes": "Excellent help text with clear descriptions. All options documented. Sensible defaults (delete=Trash). Mutually exclusive options caught with clear error messages. Dry-run on all write commands. JSON output on all commands. Positional arguments for message IDs."
+    },
+    "codeQuality": {
+      "score": 9,
+      "notes": "Follows established build/perform/register architecture. Clean separation of AppleScript generation, orchestration, and Typer handlers. Reuses engine, output, and error handling utilities. Comprehensive docstrings. No ad-hoc prints for structured data."
+    },
+    "testCoverage": {
+      "score": 9,
+      "notes": "71 new tests (35 drafts edit + 36 delete) covering all contract criteria. Tests organized by criterion ID. All use mock_osascript fixture — no real Mail.app interaction. Edge cases covered: mutual exclusivity, missing files, empty input, bulk operations. Safety invariant tested (no send verb)."
+    },
+    "safetyModel": {
+      "score": 10,
+      "notes": "Delete is safe by default (move to Trash). Permanent delete requires explicit --permanent flag AND confirmation (default N). --yes skips prompt only for --permanent. Edit command has NO send path — verified via grep and dedicated test. All safety requirements from contract and CLAUDE.md fully satisfied."
+    },
+    "errorHandling": {
+      "score": 9,
+      "notes": "AppleScript errors caught and rendered via handle_mail_error. Validation errors (mutually exclusive options, missing files, no edit options) fail fast with clear messages and appropriate exit codes. Attachment path validated before generating AppleScript."
+    },
+    "architecturalConsistency": {
+      "score": 9,
+      "notes": "New commands follow identical patterns to Sprint 5-7 compose/reply/forward: build_*_script for AppleScript generation, perform_* for orchestration, register() for thin Typer wiring. Imports engine.run_applescript, output.handle_mail_error, output.render_error. Consistent with project conventions."
+    }
+  },
+  "primaryScore": 9.2,
+  "notes": "Sprint 8 is a clean, comprehensive implementation of draft editing and message delete. All 31 contract criteria pass. All 503 tests pass including full Sprint 1-7 regression. The safety model is impeccable: delete defaults to Trash, permanent delete requires confirmation, and the edit command has zero send paths. Code follows established architecture patterns with excellent reuse of prior sprint utilities. 71 new unit tests provide thorough coverage well above the 16+12 minimums. No issues found."
+}
