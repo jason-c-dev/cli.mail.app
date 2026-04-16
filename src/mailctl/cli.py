@@ -72,9 +72,11 @@ app.add_typer(messages_app, name="messages")
 
 from mailctl.commands.accounts import register as register_accounts
 from mailctl.commands.mailboxes import register as register_mailboxes
+from mailctl.commands.messages import register as register_messages
 
 register_accounts(accounts_app)
 register_mailboxes(mailboxes_app)
+register_messages(messages_app)
 
 
 # --------------------------------------------------------------------------- #
