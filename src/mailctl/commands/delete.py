@@ -264,6 +264,15 @@ def register(messages_app: typer.Typer) -> None:
                 account=account,
             )
         except AppleScriptError as exc:
+            exc_str = str(exc).lower()
+            if "not found" in exc_str:
+                ids = ", ".join(message_ids)
+                render_error(
+                    f'Message(s) "{ids}" not found. '
+                    f"Verify message IDs with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_GENERAL_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable but satisfies type checker
 

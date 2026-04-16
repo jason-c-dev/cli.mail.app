@@ -406,6 +406,16 @@ def register(messages_app: typer.Typer) -> None:
                 account=account,
             )
         except AppleScriptError as exc:
+            # Provide clear message-not-found error if applicable.
+            exc_str = str(exc).lower()
+            if "not found" in exc_str:
+                ids = ", ".join(message_ids)
+                render_error(
+                    f'Message(s) "{ids}" not found. '
+                    f"Verify message IDs with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_GENERAL_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable but satisfies type checker
 
@@ -481,6 +491,15 @@ def register(messages_app: typer.Typer) -> None:
                 account=account,
             )
         except AppleScriptError as exc:
+            exc_str = str(exc).lower()
+            # Provide clear mailbox-not-found error if applicable.
+            if "mailbox" in exc_str and ("not found" in exc_str or "doesn't exist" in exc_str or "can't get" in exc_str):
+                render_error(
+                    f'Mailbox "{to}" not found. '
+                    f"Use 'mailctl mailboxes list' to see available mailboxes.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_GENERAL_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable but satisfies type checker
 

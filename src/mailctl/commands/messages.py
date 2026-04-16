@@ -753,6 +753,23 @@ def register(messages_app: typer.Typer) -> None:
         json_mode = json_output or ctx.obj.get("json", False)
         no_color = ctx.obj.get("no_color", False)
 
+        # -- Validate account if specified --------------------------------
+        if account is not None:
+            try:
+                known = parse_account_names_output(
+                    run_applescript(build_account_names_script())
+                )
+            except AppleScriptError as exc:
+                handle_mail_error(exc, no_color=no_color)
+                return  # unreachable
+            if account not in known:
+                render_error(
+                    f'Account "{account}" not found. '
+                    f"Known accounts: {', '.join(known) or '(none)'}.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
+
         try:
             data = fetch_messages(
                 account=account,
@@ -765,7 +782,23 @@ def register(messages_app: typer.Typer) -> None:
                 limit=limit,
             )
         except AppleScriptError as exc:
+            exc_str = str(exc).lower()
+            if "mailbox" in exc_str and ("not found" in exc_str or "can't get" in exc_str or "doesn't exist" in exc_str):
+                render_error(
+                    f'Mailbox "{mailbox}" not found. '
+                    f"Use 'mailctl mailboxes list' to see available mailboxes.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
             handle_mail_error(exc, no_color=no_color)
+
+        if not data:
+            if json_mode:
+                sys.stdout.write("[]\n")
+            else:
+                console = Console(no_color=no_color)
+                console.print("No messages found.")
+            raise typer.Exit(code=0)
 
         render_output(
             data,
@@ -850,6 +883,14 @@ def register(messages_app: typer.Typer) -> None:
         except AppleScriptError as exc:
             handle_mail_error(exc, no_color=no_color)
 
+        if not data:
+            if json_mode:
+                sys.stdout.write("[]\n")
+            else:
+                console = Console(no_color=no_color)
+                console.print("No messages matched your search.")
+            raise typer.Exit(code=0)
+
         render_output(
             data,
             SEARCH_COLUMNS,
@@ -886,6 +927,14 @@ def register(messages_app: typer.Typer) -> None:
         try:
             msg = fetch_message(message_id)
         except AppleScriptError as exc:
+            # Provide a clear message-not-found error if applicable.
+            if "not found" in str(exc).lower() or message_id in str(exc):
+                render_error(
+                    f'Message "{message_id}" not found. '
+                    f"Verify the message ID with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
             handle_mail_error(exc, no_color=no_color)
             return  # unreachable but satisfies type checker
 
