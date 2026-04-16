@@ -1,0 +1,106 @@
+{
+  "sprintNumber": 3,
+  "decision": "accepted",
+  "reviewDate": "2026-04-15",
+  "summary": "Comprehensive, well-structured contract that fully covers the Sprint 3 scope (Message Listing 3.4, Message Show 3.5) from the sprint plan. All 28 criteria are testable with specific steps and thresholds. Feature coverage is thorough, regression sprints are correct, and out-of-scope boundaries are appropriate.",
+  "criteriaAnalysis": {
+    "totalCriteria": 28,
+    "testable": 28,
+    "untestable": 0,
+    "coverageAssessment": "All sprint plan features are covered: messages list with all 7 filter options (--mailbox, --account, --unread, --from, --subject, --since/--before, --limit), default INBOX behavior, date-descending sort, batch AppleScript optimization, Rich table and JSON output. Messages show covers all fields (date, from, to, cc, bcc, subject, body), attachment metadata, --headers, --raw, --json, and positional message-id argument. Error handling, testing requirements, code architecture, regression, help text, and combined filters are all addressed.",
+    "featureCoverage": {
+      "messageListingBasic": {
+        "sprintPlanFeature": "mailctl messages list command",
+        "criteria": ["C-051", "C-052"],
+        "status": "covered"
+      },
+      "messageListingFilters": {
+        "sprintPlanFeature": "--mailbox, --account, --unread, --from, --subject, --since, --before, --limit",
+        "criteria": ["C-053", "C-054", "C-055", "C-056", "C-057", "C-058", "C-059", "C-077"],
+        "status": "covered"
+      },
+      "messageListingSorting": {
+        "sprintPlanFeature": "Sort by date descending (newest first)",
+        "criteria": ["C-060"],
+        "status": "covered"
+      },
+      "messageListingOutput": {
+        "sprintPlanFeature": "Rich table and --json output",
+        "criteria": ["C-052", "C-061"],
+        "status": "covered"
+      },
+      "messageListingBatch": {
+        "sprintPlanFeature": "Batch AppleScript for message metadata fetching",
+        "criteria": ["C-062"],
+        "status": "covered"
+      },
+      "messageShowBasic": {
+        "sprintPlanFeature": "mailctl messages show <id> with all fields",
+        "criteria": ["C-063", "C-068"],
+        "status": "covered"
+      },
+      "messageShowAttachments": {
+        "sprintPlanFeature": "Attachment metadata (filename, size, MIME type)",
+        "criteria": ["C-064"],
+        "status": "covered"
+      },
+      "messageShowFlags": {
+        "sprintPlanFeature": "--headers and --raw flags",
+        "criteria": ["C-065", "C-066"],
+        "status": "covered"
+      },
+      "messageShowJson": {
+        "sprintPlanFeature": "--json for structured data",
+        "criteria": ["C-067"],
+        "status": "covered"
+      },
+      "errorHandling": {
+        "sprintPlanFeature": "Error handling for missing messages and Mail.app not running",
+        "criteria": ["C-069", "C-070", "C-071"],
+        "status": "covered"
+      },
+      "testing": {
+        "sprintPlanFeature": "Unit tests for listing with various filter combinations",
+        "criteria": ["C-072", "C-073", "C-074"],
+        "status": "covered"
+      },
+      "codeQuality": {
+        "sprintPlanFeature": "Module architecture following Sprint 2 patterns",
+        "criteria": ["C-075"],
+        "status": "covered"
+      },
+      "regression": {
+        "sprintPlanFeature": "Sprint 1 & 2 functionality preserved",
+        "criteria": ["C-076"],
+        "status": "covered"
+      },
+      "helpText": {
+        "sprintPlanFeature": "Help text for messages group and subcommands",
+        "criteria": ["C-078"],
+        "status": "covered"
+      }
+    }
+  },
+  "strengths": [
+    "Every filter option from the sprint plan has its own dedicated criterion (C-053 through C-059), making failures easy to isolate",
+    "C-062 (batch AppleScript assertion) is an excellent performance criterion that enforces the 'batch by default' architectural principle from the product spec",
+    "C-077 (combined filters) verifies conjunctive filter behavior, which is where subtle bugs often hide",
+    "C-068 tests the UX contract that message-id is positional (not a flag), ensuring ID scheme consistency between list and show",
+    "Test method variety is appropriate: unit-test for mocked behavior, test-execution for pytest suite, cli-execution for real CLI invocation, code-inspection for architecture",
+    "All test steps follow the safety guardrails — no real Mail.app operations, everything mocked"
+  ],
+  "minorNotes": [
+    "No criterion for empty result sets (e.g., messages list returns 0 messages). This is a minor edge case — the generator should handle it but it won't block acceptance.",
+    "C-058 uses 2025 dates in test steps, which is fine for mocked tests but worth noting the current date is 2026.",
+    "No explicit criterion for TTY/--no-color on messages commands, but this is inherited from the Sprint 2 output system and the code-quality criterion (C-075) requires use of shared render_output()."
+  ],
+  "regressionSprints": {
+    "listed": [1, 2],
+    "expected": [1, 2],
+    "correct": true
+  },
+  "outOfScope": {
+    "appropriate": true,
+    "notes": "Correctly excludes cross-account search (Sprint 4), compose/reply/forward (Sprint 5-6), mark/move/delete (Sprint 7-8), and later features. Explicitly scopes down HTML conversion and attachment handling to metadata-only, which is the right call for this sprint."
+  }
+}
