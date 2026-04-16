@@ -69,3 +69,12 @@ Out of scope for v1: calendar, contacts, rules/filters, signatures, multi-device
 - **Time**: 2026-04-16T00:28:41Z
 - **Merge commit**: 22d70db14cac75bf9636bcf9a0f89dfed2333b4d
 
+
+
+## Sprint 05: Compose & Safety Model
+
+- **Status**: PASS
+- **Attempt**: 1
+- **Time**: 2026-04-16T00:44:00Z
+- **Merge commit**: $(git rev-parse HEAD)
+- **Note**: Contract negotiated and implemented via interactive harness-sprint, eval pending (evaluator accepted contract with 25 criteria, all send-path tests mocked)
