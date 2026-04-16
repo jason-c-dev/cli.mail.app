@@ -18,7 +18,7 @@ import sys
 import typer
 
 from mailctl.engine import run_applescript
-from mailctl.errors import AppleScriptError
+from mailctl.errors import AppleScriptError, EXIT_USAGE_ERROR
 from mailctl.output import (
     ColumnDef,
     handle_mail_error,
@@ -150,7 +150,7 @@ def register(mailboxes_app: typer.Typer) -> None:
                     f"Known accounts: {', '.join(sorted(known_accounts)) or '(none)'}",
                     no_color=no_color,
                 )
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
 
             data = [m for m in data if m["account"] == account]
 
