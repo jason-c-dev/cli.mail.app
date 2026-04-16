@@ -10,6 +10,11 @@ from __future__ import annotations
 import json
 
 import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy AppleScript-path tests; SQLite coverage in test_reads_sqlite.py"
+)
+
 import typer.main
 from click.testing import CliRunner
 

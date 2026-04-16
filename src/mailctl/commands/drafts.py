@@ -372,11 +372,93 @@ def parse_drafts_list_output(raw: str) -> list[dict]:
     return drafts
 
 
-def fetch_drafts(account: str | None = None) -> list[dict]:
-    """Fetch drafts from Mail.app via a single AppleScript call."""
+def fetch_drafts_via_applescript(account: str | None = None) -> list[dict]:
+    """Legacy AppleScript fetch. Retained as a fallback path."""
     script = build_drafts_list_script(account=account)
     raw = run_applescript(script, timeout=60.0)
     return parse_drafts_list_output(raw)
+
+
+def fetch_drafts(account: str | None = None) -> list[dict]:
+    """Fetch drafts from Mail.app's Envelope Index (SQLite).
+
+    Finds every mailbox whose URL path ends in ``Drafts`` and lists the
+    messages in it. Returns the same dict shape as the legacy fetch —
+    keys ``account``, ``id``, ``date``, ``to``, ``subject``.
+    """
+    from mailctl.sqlite_engine import run_query, parse_mailbox_url
+    from mailctl.account_map import uuid_for_name, name_for_uuid
+
+    where = ["mb.url LIKE '%/Drafts'"]
+    params: list = []
+
+    if account:
+        uuid = uuid_for_name(account)
+        if uuid is None:
+            return []
+        where.append("(mb.url LIKE ? OR mb.url LIKE ? OR mb.url LIKE ?)")
+        params.extend([
+            f"imap://{uuid}/%",
+            f"ews://{uuid}/%",
+            f"local://{uuid}/%",
+        ])
+
+    sql = f"""
+        SELECT m.ROWID          AS id,
+               m.date_received  AS date_received,
+               s.subject        AS subject,
+               m.subject_prefix AS subject_prefix,
+               mb.url           AS mailbox_url
+        FROM messages m
+        JOIN mailboxes mb ON mb.ROWID = m.mailbox
+        LEFT JOIN subjects s ON s.ROWID = m.subject
+        WHERE m.deleted = 0
+          AND {' AND '.join(where)}
+        ORDER BY m.date_received DESC
+    """
+    rows = run_query(sql, tuple(params))
+
+    # Fetch To-recipients per draft in one batched query.
+    draft_ids = [row["id"] for row in rows]
+    to_map: dict[int, list[str]] = {}
+    if draft_ids:
+        placeholders = ",".join("?" * len(draft_ids))
+        recipient_rows = run_query(
+            f"""
+            SELECT r.message  AS mid,
+                   a.address  AS address,
+                   a.comment  AS comment
+            FROM recipients r
+            JOIN addresses a ON a.ROWID = r.address
+            WHERE r.type = 0
+              AND r.message IN ({placeholders})
+            ORDER BY r.message, r.position
+            """,
+            tuple(draft_ids),
+        )
+        for r in recipient_rows:
+            rendered = r["comment"] + " <" + r["address"] + ">" if r["comment"] else r["address"]
+            to_map.setdefault(int(r["mid"]), []).append(rendered)
+
+    results: list[dict] = []
+    for row in rows:
+        _, acct_uuid, _ = parse_mailbox_url(row["mailbox_url"] or "")
+        subject = (row["subject_prefix"] or "") + (row["subject"] or "")
+        results.append({
+            "account": name_for_uuid(acct_uuid) if acct_uuid else "",
+            "id": str(row["id"]),
+            "date": _format_unix_date_drafts(row["date_received"]),
+            "to": ", ".join(to_map.get(int(row["id"]), [])),
+            "subject": subject.strip(),
+        })
+    return results
+
+
+def _format_unix_date_drafts(ts: int | None) -> str:
+    if ts is None:
+        return ""
+    from datetime import datetime
+    return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def register(drafts_app: typer.Typer) -> None:

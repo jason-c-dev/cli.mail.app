@@ -28,6 +28,12 @@ Covers:
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy AppleScript-path tests; SQLite coverage in test_reads_sqlite.py"
+)
+
 import json
 
 import pytest

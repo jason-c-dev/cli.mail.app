@@ -120,18 +120,71 @@ def parse_mailboxes_output(raw: str) -> list[dict]:
 # Data fetching (engine integration)
 # --------------------------------------------------------------------------- #
 
-def fetch_mailboxes(account: str | None = None) -> list[dict]:
-    """Fetch mailboxes via a single AppleScript call.
-
-    When *account* is given, only that account is enumerated — a significant
-    speedup for users with a slow Exchange account who only want their Gmail
-    mailboxes (or vice versa).
-
-    Raises :class:`AppleScriptError` (or a subclass) on failure.
-    """
+def fetch_mailboxes_via_applescript(account: str | None = None) -> list[dict]:
+    """Legacy AppleScript fetch. Retained as a fallback and for tests."""
     script = build_mailboxes_script(account=account)
     raw = run_applescript(script, timeout=180.0)
     return parse_mailboxes_output(raw)
+
+
+def fetch_mailboxes(account: str | None = None) -> list[dict]:
+    """Fetch mailboxes from Mail.app's Envelope Index (SQLite).
+
+    Returns one dict per mailbox with keys ``account``, ``name``,
+    ``unread_count``, ``message_count`` — identical shape to the legacy
+    AppleScript fetch, so callers and renderers are unchanged.
+
+    When *account* is given, filters to that account's UUID. Unknown
+    accounts return an empty list; the Typer handler converts that into
+    a usage error with the list of known accounts.
+    """
+    from mailctl.sqlite_engine import run_query, parse_mailbox_url
+    from mailctl.account_map import get_account_map, uuid_for_name
+
+    target_uuid = uuid_for_name(account) if account else None
+    if account and target_uuid is None:
+        from mailctl.account_map import get_account_map
+        known = ", ".join(a.name for a in get_account_map()) or "(none)"
+        raise AppleScriptError(
+            f'Account "{account}" not found. Known accounts: {known}.'
+        )
+
+    # Exclude the soft-deleted counts from the visible total (total_count
+    # includes deleted messages Mail hasn't fully purged).
+    rows = run_query(
+        """
+        SELECT url,
+               total_count - deleted_count AS visible_count,
+               unread_count_adjusted_for_duplicates AS unread
+        FROM mailboxes
+        """
+    )
+
+    uuid_to_name = {a.uuid: a.name for a in get_account_map()}
+    results: list[dict] = []
+    for row in rows:
+        scheme, uuid, path = parse_mailbox_url(row["url"])
+        if target_uuid and uuid != target_uuid:
+            continue
+        acct_name = uuid_to_name.get(uuid)
+        if not acct_name:
+            # Orphan mailbox whose account AppleScript didn't return —
+            # could be a disabled account or a stale entry. Skip.
+            continue
+        # Keep full provider-prefixed path so Gmail users can tell
+        # "All Mail" from "[Gmail]/All Mail" if that distinction matters.
+        # The last segment is what Mail.app shows in its sidebar.
+        name = path.rsplit("/", 1)[-1] if path else path
+        results.append({
+            "account": acct_name,
+            "name": name,
+            "unread_count": int(row["unread"]),
+            "message_count": int(row["visible_count"]),
+        })
+
+    # Sort: account name, then mailbox name. Makes diff/eyeball easy.
+    results.sort(key=lambda m: (m["account"], m["name"]))
+    return results
 
 
 # --------------------------------------------------------------------------- #

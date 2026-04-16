@@ -287,6 +287,95 @@ def check_accounts() -> CheckResult:
         )
 
 
+def check_envelope_index_present() -> CheckResult:
+    """Check that Mail.app's Envelope Index file can be located."""
+    from mailctl.sqlite_engine import envelope_index_path
+    from mailctl.errors import EnvelopeIndexMissingError
+    try:
+        path = envelope_index_path()
+        version = path.parents[1].name  # "V10"
+        return CheckResult(
+            name="envelope_index",
+            status="pass",
+            message=f"Envelope Index found ({version}): {path}",
+        )
+    except EnvelopeIndexMissingError as exc:
+        return CheckResult(name="envelope_index", status="fail", message=str(exc))
+
+
+def check_envelope_index_readable() -> CheckResult:
+    """Check that the Envelope Index is readable from this process.
+
+    macOS TCC (Transparency, Consent, and Control) gates access to Mail's
+    data directory. If this fails with :class:`FullDiskAccessError`, the
+    terminal needs to be added to Full Disk Access.
+    """
+    from mailctl.sqlite_engine import run_query, envelope_index_path
+    from mailctl.errors import FullDiskAccessError, EnvelopeIndexError, EnvelopeIndexMissingError
+    try:
+        envelope_index_path()
+    except EnvelopeIndexMissingError:
+        # Upstream check will already have reported this.
+        return CheckResult(
+            name="envelope_index_readable",
+            status="fail",
+            message="Envelope Index not found (see previous check).",
+        )
+    try:
+        run_query("SELECT 1")
+        return CheckResult(
+            name="envelope_index_readable",
+            status="pass",
+            message="Envelope Index is readable (Full Disk Access granted).",
+        )
+    except FullDiskAccessError as exc:
+        return CheckResult(
+            name="envelope_index_readable",
+            status="fail",
+            message=str(exc),
+        )
+    except EnvelopeIndexError as exc:
+        return CheckResult(
+            name="envelope_index_readable",
+            status="fail",
+            message=f"Envelope Index is present but unreadable: {exc}",
+        )
+
+
+def check_envelope_index_schema() -> CheckResult:
+    """Check that the Envelope Index schema still matches what mailctl expects.
+
+    Apple can change the schema in a new macOS release. Surfacing a clear
+    error here is more useful than every read command throwing a vague
+    SQL error.
+    """
+    from mailctl.sqlite_engine import check_schema
+    from mailctl.errors import EnvelopeIndexError, FullDiskAccessError, EnvelopeIndexMissingError
+    try:
+        missing = check_schema()
+    except (EnvelopeIndexError, FullDiskAccessError, EnvelopeIndexMissingError) as exc:
+        return CheckResult(
+            name="envelope_index_schema",
+            status="fail",
+            message=f"Could not inspect schema: {exc}",
+        )
+    if not missing:
+        return CheckResult(
+            name="envelope_index_schema",
+            status="pass",
+            message="Envelope Index schema matches expectations.",
+        )
+    return CheckResult(
+        name="envelope_index_schema",
+        status="fail",
+        message=(
+            f"Envelope Index is missing expected tables: {sorted(missing)}. "
+            "Apple may have changed the schema in your macOS version; "
+            "mailctl reads will not work until the schema handlers are updated."
+        ),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # All checks, in order
 # --------------------------------------------------------------------------- #
@@ -297,6 +386,9 @@ ALL_CHECKS = [
     check_mail_running,
     check_scriptable,
     check_accounts,
+    check_envelope_index_present,
+    check_envelope_index_readable,
+    check_envelope_index_schema,
 ]
 
 

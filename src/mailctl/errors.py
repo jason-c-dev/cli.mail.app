@@ -55,6 +55,39 @@ class ScriptTimeoutError(AppleScriptError):
         )
 
 
+class EnvelopeIndexError(AppleScriptError):
+    """Base class for Envelope Index (SQLite) read failures.
+
+    Subclasses AppleScriptError so the existing handle_mail_error() path still
+    catches it — calling code need not special-case the source. SQLite reads
+    are an implementation detail; to the user, a read failure is a read failure.
+    """
+
+
+class EnvelopeIndexMissingError(EnvelopeIndexError):
+    """Raised when the Envelope Index file cannot be located on disk."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Mail.app's Envelope Index not found. Expected at "
+            "~/Library/Mail/V*/MailData/Envelope Index. "
+            "Run Mail.app at least once, then try 'mailctl doctor'."
+        )
+
+
+class FullDiskAccessError(EnvelopeIndexError):
+    """Raised when reading the Envelope Index is blocked by macOS TCC."""
+
+    def __init__(self, path: str = "") -> None:
+        self.path = path
+        super().__init__(
+            "Permission denied reading Mail.app's Envelope Index. Grant "
+            "Full Disk Access in System Settings > Privacy & Security > "
+            "Full Disk Access > add your terminal (Terminal/iTerm/...), "
+            "then restart the terminal and try again."
+        )
+
+
 # Exit code constants — used across the CLI.
 EXIT_SUCCESS = 0
 EXIT_GENERAL_ERROR = 1

@@ -1,14 +1,10 @@
-"""Unit tests for 'mailctl messages list' and 'mailctl messages show'.
+"""Legacy AppleScript-backed tests for messages list/show.
 
-Covers:
-- messages list: success with multiple messages, each filter option (--unread,
-  --from, --subject, --since, --before, --limit), --json output, default INBOX,
-  --account and --mailbox targeting, batch call assertion, combined filters,
-  date sorting.
-- messages show: full message display, attachment metadata, --headers flag,
-  --raw flag, --json output, message-not-found error, positional argument.
-- Error handling: Mail.app not running, stderr/stdout separation.
-- Help text: subcommand and option listings.
+The read path switched to SQLite against Mail.app's Envelope Index.
+These tests asserted on AppleScript generation and mock return shapes
+that no longer drive the production code path. Behaviour coverage for
+the SQLite path lives in ``test_reads_sqlite.py``; these tests remain
+as historical documentation.
 """
 
 from __future__ import annotations
@@ -16,6 +12,10 @@ from __future__ import annotations
 import json
 
 import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="Legacy AppleScript-path tests; SQLite coverage in test_reads_sqlite.py"
+)
 import typer.main
 from click.testing import CliRunner
 

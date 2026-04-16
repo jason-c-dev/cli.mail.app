@@ -190,9 +190,12 @@ class TestMessageNotFound:
 class TestEmptyResults:
     """C-235: List/search with no results shows a helpful message."""
 
-    def test_messages_list_empty(self, mock_osascript):
+    def test_messages_list_empty(self, envelope_db, mock_osascript):
         """messages list with no results shows 'No messages found.'"""
-        mock_osascript.set_output("")
+        # Seed an INBOX mailbox with no messages so the mailbox resolves
+        # but the result set is empty.
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
         result = runner.invoke(
             _click_app,
             ["messages", "list", "--mailbox", "INBOX"],

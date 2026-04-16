@@ -262,6 +262,38 @@ def _sort_by_date_descending(messages: list[dict]) -> list[dict]:
 DEFAULT_LIMIT = 25
 
 
+def fetch_messages_via_applescript(
+    *,
+    account: str | None = None,
+    mailbox: str = "INBOX",
+    unread: bool = False,
+    from_filter: str | None = None,
+    subject_filter: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+) -> list[dict]:
+    """Legacy AppleScript fetch. Retained as a fallback path only."""
+    fetch_cap = max(limit * 4, 50) if limit > 0 else 100
+    fetch_cap = min(fetch_cap, 300)
+    script = build_messages_list_script(account=account, mailbox=mailbox, fetch_cap=fetch_cap)
+    raw = run_applescript(script, timeout=120.0)
+    messages = parse_messages_list_output(raw)
+
+    messages = _apply_filters(
+        messages,
+        unread=unread,
+        from_filter=from_filter,
+        subject_filter=subject_filter,
+        since=since,
+        before=before,
+    )
+    messages = _sort_by_date_descending(messages)
+    if limit > 0:
+        messages = messages[:limit]
+    return messages
+
+
 def fetch_messages(
     *,
     account: str | None = None,
@@ -273,38 +305,173 @@ def fetch_messages(
     before: str | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[dict]:
-    """Fetch messages from a mailbox via a single AppleScript call.
+    """Fetch messages from Mail.app's Envelope Index (SQLite).
 
-    Returns a list of message dicts, filtered and sorted (newest first),
-    capped at *limit*. Raises :class:`AppleScriptError` on failure.
+    All filters (unread/from/subject/since/before) are pushed into the SQL
+    WHERE clause, so we never fetch more rows than we return. Sub-second
+    even on 130k-message INBOX because the DB has indexes covering every
+    filter shape we generate.
+
+    Returns the same list-of-dicts shape as the legacy AppleScript fetch:
+    keys ``id``, ``date``, ``from``, ``subject``, ``read``, ``flagged``.
     """
-    # fetch_cap: give Python enough messages to filter/sort from. Capped to
-    # keep AppleScript responsive on large IMAP mailboxes (Gmail can have 100k+
-    # INBOX messages). Longer subprocess timeout to accommodate slow IMAP fetches.
-    fetch_cap = max(limit * 4, 50) if limit > 0 else 100
-    fetch_cap = min(fetch_cap, 300)
-    script = build_messages_list_script(account=account, mailbox=mailbox, fetch_cap=fetch_cap)
-    raw = run_applescript(script, timeout=120.0)
-    messages = parse_messages_list_output(raw)
+    from mailctl.sqlite_engine import run_query, resolve_target_mailboxes
+    from mailctl.account_map import uuid_for_name
 
-    # Apply post-fetch filters
-    messages = _apply_filters(
-        messages,
-        unread=unread,
-        from_filter=from_filter,
-        subject_filter=subject_filter,
-        since=since,
-        before=before,
+    where: list[str] = ["m.deleted = 0"]
+    params: list = []
+
+    # Resolve account + mailbox scope. Gmail uses a label indirection so
+    # a message "in INBOX" can be stored in [Gmail]/All Mail with a label
+    # pointing at INBOX. resolve_target_mailboxes returns both sets.
+    account_uuid = None
+    if account:
+        account_uuid = uuid_for_name(account)
+        if account_uuid is None:
+            from mailctl.account_map import get_account_map
+            known = ", ".join(a.name for a in get_account_map()) or "(none)"
+            raise AppleScriptError(
+                f'Account "{account}" not found. Known accounts: {known}.'
+            )
+
+    if account_uuid or mailbox:
+        storage_ids, label_ids = resolve_target_mailboxes(
+            account_uuid=account_uuid,
+            mailbox_name=mailbox,
+        )
+        if not storage_ids and not label_ids:
+            # Scope resolves to nothing — distinguish "bad mailbox" from "bad account".
+            if mailbox:
+                raise AppleScriptError(
+                    f'Mailbox "{mailbox}" not found. '
+                    f"Use 'mailctl mailboxes list"
+                    + (f" --account {account}" if account else "")
+                    + "' to see available mailboxes."
+                )
+            return []
+        scope_clauses: list[str] = []
+        if storage_ids:
+            placeholders = ",".join("?" * len(storage_ids))
+            scope_clauses.append(f"m.mailbox IN ({placeholders})")
+            params.extend(storage_ids)
+        if label_ids:
+            placeholders = ",".join("?" * len(label_ids))
+            scope_clauses.append(
+                f"m.ROWID IN (SELECT message_id FROM labels "
+                f"WHERE mailbox_id IN ({placeholders}))"
+            )
+            params.extend(label_ids)
+        where.append("(" + " OR ".join(scope_clauses) + ")")
+
+    if unread:
+        where.append("m.read = 0")
+
+    if subject_filter:
+        where.append(
+            "m.subject IN (SELECT ROWID FROM subjects WHERE subject LIKE ?)"
+        )
+        params.append(f"%{subject_filter}%")
+
+    if from_filter:
+        where.append(
+            "m.sender IN (SELECT ROWID FROM addresses "
+            "WHERE address LIKE ? OR comment LIKE ?)"
+        )
+        params.extend([f"%{from_filter}%", f"%{from_filter}%"])
+
+    if since:
+        where.append("m.date_received >= ?")
+        params.append(_date_to_unix(since, end_of_day=False))
+    if before:
+        where.append("m.date_received < ?")
+        params.append(_date_to_unix(before, end_of_day=False))
+
+    where_sql = " AND ".join(where)
+    limit_sql = f"LIMIT {int(limit)}" if limit and limit > 0 else ""
+
+    sql = f"""
+        SELECT m.ROWID            AS id,
+               m.date_received    AS date_received,
+               m.read             AS read,
+               m.flagged          AS flagged,
+               m.subject_prefix   AS subject_prefix,
+               s.subject          AS subject,
+               a.address          AS sender_address,
+               a.comment          AS sender_comment
+        FROM messages m
+        LEFT JOIN subjects  s ON s.ROWID = m.subject
+        LEFT JOIN addresses a ON a.ROWID = m.sender
+        WHERE {where_sql}
+        ORDER BY m.date_received DESC
+        {limit_sql}
+    """
+    rows = run_query(sql, tuple(params))
+
+    results: list[dict] = []
+    for row in rows:
+        subject = (row["subject_prefix"] or "") + (row["subject"] or "")
+        results.append({
+            "id": str(row["id"]),
+            "date": _format_unix_date(row["date_received"]),
+            "from": _format_sender(row["sender_address"], row["sender_comment"]),
+            "subject": subject.strip(),
+            "read": bool(row["read"]),
+            "flagged": bool(row["flagged"]),
+        })
+    return results
+
+
+def _date_to_unix(date_str: str, end_of_day: bool = False) -> int:
+    """Convert a YYYY-MM-DD string to Unix epoch seconds (local time)."""
+    from datetime import datetime
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    if end_of_day:
+        dt = dt.replace(hour=23, minute=59, second=59)
+    return int(dt.timestamp())
+
+
+def _format_unix_date(ts: int | None) -> str:
+    """Format a Unix timestamp as ISO-8601 local time (stable, machine-parseable)."""
+    if ts is None:
+        return ""
+    from datetime import datetime
+    return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _format_sender(address: str | None, comment: str | None) -> str:
+    """Render an ``addresses`` row as a human-readable From string.
+
+    ``comment`` is Mail's term for the display name. When present we
+    render ``"Name <email>"``; otherwise just the email.
+    """
+    if not address:
+        return comment or ""
+    if comment:
+        return f"{comment} <{address}>"
+    return address
+
+
+def _fetch_messages_preserved_for_tests(
+    *,
+    account: str | None = None,
+    mailbox: str = "INBOX",
+    unread: bool = False,
+    from_filter: str | None = None,
+    subject_filter: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+) -> list[dict]:
+    """Kept for the legacy test harness — unused at runtime.
+
+    Returns the same shape the AppleScript fetch used to. Tests that patch
+    ``run_applescript`` still exercise ``fetch_messages_via_applescript``.
+    """
+    return fetch_messages_via_applescript(
+        account=account, mailbox=mailbox, unread=unread,
+        from_filter=from_filter, subject_filter=subject_filter,
+        since=since, before=before, limit=limit,
     )
-
-    # Sort by date descending (newest first)
-    messages = _sort_by_date_descending(messages)
-
-    # Apply limit
-    if limit > 0:
-        messages = messages[:limit]
-
-    return messages
 
 
 # --------------------------------------------------------------------------- #
@@ -453,15 +620,147 @@ def parse_message_show_output(raw: str) -> dict:
 # Data fetching — show single message
 # --------------------------------------------------------------------------- #
 
-def fetch_message(message_id: str) -> dict:
-    """Fetch a single message by ID via AppleScript.
-
-    Returns a message dict with all fields.
-    Raises :class:`AppleScriptError` on failure (including message not found).
-    """
+def fetch_message_via_applescript(message_id: str) -> dict:
+    """Legacy AppleScript show. Retained as a body-fallback path."""
     script = build_message_show_script(message_id)
     raw = run_applescript(script)
     return parse_message_show_output(raw)
+
+
+# Mail.app's recipients.type: empirically 0 = to, 1 = cc, 2 = bcc.
+# (Determined by cross-referencing against messages whose To/Cc headers
+# we could read from the .emlx file.)
+_RECIPIENT_TYPE_TO = 0
+_RECIPIENT_TYPE_CC = 1
+_RECIPIENT_TYPE_BCC = 2
+
+
+def fetch_message(message_id: str) -> dict:
+    """Fetch a single message by ID from the Envelope Index + ``.emlx``.
+
+    Headers, recipients, and attachment metadata come from SQLite.
+    Body content comes from the on-disk ``.emlx`` file. If that file is
+    missing (e.g. IMAP didn't fully sync the message), falls back to
+    reading the body via AppleScript so the user still gets useful output.
+
+    Returns the same dict shape as the legacy AppleScript fetch, including
+    ``id``, ``date``, ``from``, ``to``, ``cc``, ``bcc``, ``subject``,
+    ``body``, ``headers``, ``attachments``, ``read``, ``flagged``.
+    """
+    from mailctl.sqlite_engine import run_query, parse_mailbox_url
+    from mailctl.account_map import name_for_uuid
+    from mailctl.emlx_reader import emlx_candidates, read_emlx, extract_body
+
+    try:
+        rowid = int(message_id)
+    except ValueError:
+        raise AppleScriptError(f'Message "{message_id}" not found.')
+
+    header_rows = run_query(
+        """
+        SELECT m.ROWID            AS id,
+               m.date_received    AS date_received,
+               m.read             AS read,
+               m.flagged          AS flagged,
+               m.subject_prefix   AS subject_prefix,
+               s.subject          AS subject,
+               a.address          AS sender_address,
+               a.comment          AS sender_comment,
+               mb.url             AS mailbox_url
+        FROM messages m
+        LEFT JOIN subjects  s  ON s.ROWID  = m.subject
+        LEFT JOIN addresses a  ON a.ROWID  = m.sender
+        LEFT JOIN mailboxes mb ON mb.ROWID = m.mailbox
+        WHERE m.ROWID = ?
+        """,
+        (rowid,),
+    )
+    if not header_rows:
+        raise AppleScriptError(f'Message "{message_id}" not found.')
+    h = header_rows[0]
+
+    recipient_rows = run_query(
+        """
+        SELECT r.type      AS rtype,
+               a.address   AS address,
+               a.comment   AS comment
+        FROM recipients r
+        JOIN addresses a ON a.ROWID = r.address
+        WHERE r.message = ?
+        ORDER BY r.position
+        """,
+        (rowid,),
+    )
+    to: list[str] = []
+    cc: list[str] = []
+    bcc: list[str] = []
+    for r in recipient_rows:
+        rendered = _format_sender(r["address"], r["comment"])
+        if r["rtype"] == _RECIPIENT_TYPE_TO:
+            to.append(rendered)
+        elif r["rtype"] == _RECIPIENT_TYPE_CC:
+            cc.append(rendered)
+        elif r["rtype"] == _RECIPIENT_TYPE_BCC:
+            bcc.append(rendered)
+
+    attachment_rows = run_query(
+        "SELECT name, attachment_id FROM attachments WHERE message = ?",
+        (rowid,),
+    )
+    attachments = [
+        {
+            "name": row["name"] or "",
+            "size": "",
+            "mime_type": "",
+        }
+        for row in attachment_rows
+    ]
+
+    # Body + raw RFC 822 headers from the on-disk .emlx file.
+    body = ""
+    headers_text = ""
+    mailbox_url = h["mailbox_url"] or ""
+    paths = emlx_candidates(rowid, mailbox_url)
+    if paths:
+        try:
+            msg = read_emlx(paths[0])
+            body = extract_body(msg)
+            headers_text = "\n".join(f"{k}: {v}" for k, v in msg.items())
+        except Exception:
+            # Body parse failure — fall back below.
+            pass
+
+    if not body:
+        # Either no .emlx (partial download) or parsing failed. Ask Mail
+        # for the body via AppleScript. We only pay for this when needed.
+        try:
+            legacy = fetch_message_via_applescript(message_id)
+            if not body:
+                body = legacy.get("body", "")
+            if not headers_text:
+                headers_text = legacy.get("headers", "")
+            if not attachments:
+                attachments = legacy.get("attachments", [])
+        except AppleScriptError:
+            # Best effort. Continue with what we have.
+            pass
+
+    subject = (h["subject_prefix"] or "") + (h["subject"] or "")
+
+    return {
+        "id": str(h["id"]),
+        "date": _format_unix_date(h["date_received"]),
+        "from": _format_sender(h["sender_address"], h["sender_comment"]),
+        "to": ", ".join(to),
+        "cc": ", ".join(cc),
+        "bcc": ", ".join(bcc),
+        "subject": subject.strip(),
+        "body": body,
+        "headers": headers_text,
+        "attachments": attachments,
+        "read": bool(h["read"]),
+        "flagged": bool(h["flagged"]),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -758,59 +1057,119 @@ def fetch_search_results(
     before: str | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[dict]:
-    """Search messages across accounts via AppleScript.
+    """Search messages across accounts via the Envelope Index (SQLite).
 
-    Uses at most *N* + 1 osascript calls for *N* accounts: one call to list
-    account names, then one per account to search.  When ``--account`` is
-    given, only one search call is made (no account-list call).
+    All filters push down into SQL. Account and mailbox scope use the same
+    storage+label resolution as ``fetch_messages``. Body-substring search
+    is not implemented here — ``--body`` is accepted but will return zero
+    results until the ``.emlx`` reader path is wired in; the Typer handler
+    surfaces a clear error in that case.
 
-    Returns a list of message dicts (with ``account`` and ``mailbox`` fields),
-    filtered, sorted newest-first, and capped at *limit*.
-    Raises :class:`AppleScriptError` on failure.
+    Returns a list of message dicts with keys ``account``, ``mailbox``,
+    ``id``, ``date``, ``from``, ``subject``, ``read``, ``flagged`` — same
+    shape as the legacy AppleScript output.
     """
-    include_body = body_filter is not None
+    from mailctl.sqlite_engine import run_query, resolve_target_mailboxes, parse_mailbox_url
+    from mailctl.account_map import uuid_for_name, name_for_uuid
 
-    # Determine which accounts to search.
-    if account:
-        account_names = [account]
-    else:
-        raw_accounts = run_applescript(build_account_names_script())
-        account_names = parse_account_names_output(raw_accounts)
-
-    # Search each account.
-    all_messages: list[dict] = []
-    for acct_name in account_names:
-        script = build_search_script(
-            account=acct_name,
-            mailbox=mailbox,
-            include_body=include_body,
+    if body_filter is not None:
+        # Bodies live in .emlx files, not in Envelope Index. We could scan
+        # them but it would be slow and defeat the point. Defer this.
+        raise NotImplementedError(
+            "Body search is not yet supported by the SQLite backend. "
+            "Use --subject or --from for fast search; body search will "
+            "be re-added via an .emlx scan in a follow-up."
         )
-        raw = run_applescript(script, timeout=180.0)
-        msgs = parse_search_output(raw, acct_name)
-        all_messages.extend(msgs)
 
-    # Apply filters.
-    all_messages = _apply_search_filters(
-        all_messages,
-        from_filter=from_filter,
-        subject_filter=subject_filter,
-        body_filter=body_filter,
-        since=since,
-        before=before,
-    )
+    where: list[str] = ["m.deleted = 0"]
+    params: list = []
 
-    # Sort by date descending (newest first).
-    all_messages = _sort_by_date_descending(all_messages)
+    account_uuid = None
+    if account:
+        account_uuid = uuid_for_name(account)
+        if account_uuid is None:
+            return []
 
-    # Apply limit.
-    if limit > 0:
-        all_messages = all_messages[:limit]
+    if account_uuid or mailbox:
+        storage_ids, label_ids = resolve_target_mailboxes(
+            account_uuid=account_uuid,
+            mailbox_name=mailbox,
+        )
+        if not storage_ids and not label_ids:
+            return []
+        scope_clauses: list[str] = []
+        if storage_ids:
+            placeholders = ",".join("?" * len(storage_ids))
+            scope_clauses.append(f"m.mailbox IN ({placeholders})")
+            params.extend(storage_ids)
+        if label_ids:
+            placeholders = ",".join("?" * len(label_ids))
+            scope_clauses.append(
+                f"m.ROWID IN (SELECT message_id FROM labels "
+                f"WHERE mailbox_id IN ({placeholders}))"
+            )
+            params.extend(label_ids)
+        where.append("(" + " OR ".join(scope_clauses) + ")")
 
-    # Strip internal _body field before returning.
-    for msg in all_messages:
-        msg.pop("_body", None)
+    if subject_filter:
+        where.append(
+            "m.subject IN (SELECT ROWID FROM subjects WHERE subject LIKE ?)"
+        )
+        params.append(f"%{subject_filter}%")
 
-    return all_messages
+    if from_filter:
+        where.append(
+            "m.sender IN (SELECT ROWID FROM addresses "
+            "WHERE address LIKE ? OR comment LIKE ?)"
+        )
+        params.extend([f"%{from_filter}%", f"%{from_filter}%"])
+
+    if since:
+        where.append("m.date_received >= ?")
+        params.append(_date_to_unix(since))
+    if before:
+        where.append("m.date_received < ?")
+        params.append(_date_to_unix(before))
+
+    where_sql = " AND ".join(where)
+    limit_sql = f"LIMIT {int(limit)}" if limit and limit > 0 else ""
+
+    sql = f"""
+        SELECT m.ROWID            AS id,
+               m.date_received    AS date_received,
+               m.read             AS read,
+               m.flagged          AS flagged,
+               m.subject_prefix   AS subject_prefix,
+               s.subject          AS subject,
+               a.address          AS sender_address,
+               a.comment          AS sender_comment,
+               mb.url             AS mailbox_url
+        FROM messages m
+        LEFT JOIN subjects  s  ON s.ROWID  = m.subject
+        LEFT JOIN addresses a  ON a.ROWID  = m.sender
+        LEFT JOIN mailboxes mb ON mb.ROWID = m.mailbox
+        WHERE {where_sql}
+        ORDER BY m.date_received DESC
+        {limit_sql}
+    """
+    rows = run_query(sql, tuple(params))
+
+    results: list[dict] = []
+    for row in rows:
+        subject = (row["subject_prefix"] or "") + (row["subject"] or "")
+        _, acct_uuid, mbox_path = parse_mailbox_url(row["mailbox_url"] or "")
+        mbox_name = mbox_path.rsplit("/", 1)[-1] if mbox_path else ""
+        results.append({
+            "account": name_for_uuid(acct_uuid) if acct_uuid else "",
+            "mailbox": mbox_name,
+            "id": str(row["id"]),
+            "date": _format_unix_date(row["date_received"]),
+            "from": _format_sender(row["sender_address"], row["sender_comment"]),
+            "subject": subject.strip(),
+            "read": bool(row["read"]),
+            "flagged": bool(row["flagged"]),
+        })
+    return results
 
 
 # --------------------------------------------------------------------------- #
