@@ -374,19 +374,19 @@ class TestUrlParsing:
     def test_parse_imap_url_with_brackets(self):
         from mailctl.sqlite_engine import parse_mailbox_url
         scheme, uuid, path = parse_mailbox_url(
-            "imap://68B19670-0922-4607-A5ED-699A437E53CE/%5BGmail%5D/All%20Mail"
+            "imap://11111111-2222-3333-4444-555555555555/%5BGmail%5D/All%20Mail"
         )
         assert scheme == "imap"
-        assert uuid == "68B19670-0922-4607-A5ED-699A437E53CE"
+        assert uuid == "11111111-2222-3333-4444-555555555555"
         assert path == "[Gmail]/All Mail"
 
     def test_parse_ews_url(self):
         from mailctl.sqlite_engine import parse_mailbox_url
         scheme, uuid, path = parse_mailbox_url(
-            "ews://46D1ED78-DB9E-4FFE-9439-B4F2999F1625/Inbox"
+            "ews://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/Inbox"
         )
         assert scheme == "ews"
-        assert uuid == "46D1ED78-DB9E-4FFE-9439-B4F2999F1625"
+        assert uuid == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         assert path == "Inbox"
 
     def test_friendly_name_strips_prefix(self):

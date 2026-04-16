@@ -36,3 +36,10 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Harness state (sprint plans, logs, contracts, eval reports) — build-time
+# only; the distilled product spec lives in docs/product-spec.md.
+harness-state/
+
+# Local planning docs
+.claude/plans/
