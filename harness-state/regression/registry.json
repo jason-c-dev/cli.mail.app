@@ -223,6 +223,35 @@
         "C-219"
       ],
       "contractPath": "sprints/sprint-08/contract.json"
+    },
+    "9": {
+      "criteria": [
+        "C-220",
+        "C-221",
+        "C-222",
+        "C-223",
+        "C-224",
+        "C-225",
+        "C-226",
+        "C-227",
+        "C-228",
+        "C-229",
+        "C-230",
+        "C-231",
+        "C-232",
+        "C-233",
+        "C-234",
+        "C-235",
+        "C-236",
+        "C-237",
+        "C-238",
+        "C-239",
+        "C-240",
+        "C-241",
+        "C-242",
+        "C-243"
+      ],
+      "contractPath": "sprints/sprint-09/contract.json"
     }
   },
   "lastFullRun": null

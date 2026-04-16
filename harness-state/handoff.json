@@ -8,9 +8,10 @@
     5,
     6,
     7,
-    8
+    8,
+    9
   ],
-  "currentSprint": 9,
+  "currentSprint": 10,
   "totalSprints": 10,
   "completedFeatures": [
     "AppleScript Engine",
@@ -40,8 +41,8 @@
   "devServerPort": 0,
   "git": {
     "harnessBranch": "main",
-    "latestTag": "harness/sprint-08/pass",
-    "latestMergeSha": "846896556d2607e4b2f2f771a753ccbc1f1b4111",
+    "latestTag": "harness/sprint-09/pass",
+    "latestMergeSha": "4bcc58c0a62f6c28d17d303e08505bb15f658635",
     "prNumbers": []
   }
 }
