@@ -94,3 +94,11 @@ Out of scope for v1: calendar, contacts, rules/filters, signatures, multi-device
 - **Time**: 2026-04-16T02:35:10Z
 - **Merge commit**: 4f5b3048f7647a0154e6a82f80aebf9c48b9fd10
 
+
+## Sprint 08: Draft Editing & Delete
+
+- **Status**: PASS
+- **Attempt**: 1
+- **Time**: 2026-04-16T02:53:00Z
+- **Merge commit**: 846896556d2607e4b2f2f771a753ccbc1f1b4111
+
