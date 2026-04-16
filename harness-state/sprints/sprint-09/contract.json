@@ -1,0 +1,336 @@
+{
+  "sprintNumber": 9,
+  "name": "Doctor Command & Error Polish",
+  "theme": "Make failures helpful — diagnostics command and polished error messages everywhere.",
+  "features": ["Doctor Command (3.12)", "Error handling polish across all commands"],
+  "criteria": [
+    {
+      "id": "C-220",
+      "category": "doctor-command",
+      "description": "'mailctl doctor' command exists as a top-level command (not under a subcommand group), runs successfully (exit 0) when all checks pass against mocked osascript, and prints a summary of all checks",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' via CliRunner with mock_osascript configured to return success for all checks",
+        "Verify exit code is 0",
+        "Verify stdout contains at least 5 check results (one per check category)",
+        "Verify 'mailctl --help' lists 'doctor' as a top-level command"
+      ],
+      "threshold": "Command exists as top-level, exit 0 when all checks pass, at least 5 checks reported"
+    },
+    {
+      "id": "C-221",
+      "category": "doctor-check-osascript",
+      "description": "Doctor checks that 'osascript' is available and functional. When osascript is available, the check passes. When mocked as missing/broken, the check fails with an actionable message mentioning Xcode command-line tools",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with mock_osascript configured for success",
+        "Verify output includes a passing check for osascript availability",
+        "Mock subprocess to simulate osascript not found (FileNotFoundError or returncode != 0)",
+        "Run 'mailctl doctor' and verify the osascript check reports failure",
+        "Verify the failure message includes actionable fix guidance (e.g., install Xcode command-line tools)"
+      ],
+      "threshold": "osascript check passes when available; fails with actionable fix when missing"
+    },
+    {
+      "id": "C-222",
+      "category": "doctor-check-mail-installed",
+      "description": "Doctor checks that Mail.app is installed (exists on the system). When Mail.app is found, the check passes. When mocked as absent, the check fails with an actionable message",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with mocks simulating Mail.app is installed",
+        "Verify output includes a passing check for Mail.app installation",
+        "Mock the installation check to simulate Mail.app not found",
+        "Verify the check reports failure with a message about Mail.app not being installed"
+      ],
+      "threshold": "Mail.app installation check passes when found; fails with clear message when missing"
+    },
+    {
+      "id": "C-223",
+      "category": "doctor-check-mail-running",
+      "description": "Doctor checks that Mail.app is currently running. When Mail.app is running (mocked), the check passes. When not running, the check fails with a message suggesting to launch Mail.app",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with mock returning that Mail.app is running",
+        "Verify output includes a passing check for Mail.app running status",
+        "Mock the running check to indicate Mail.app is not running",
+        "Verify the check fails with a message that includes 'launch Mail.app' or equivalent actionable guidance"
+      ],
+      "threshold": "Running check passes when Mail.app is running; fails with 'launch Mail.app' guidance when not"
+    },
+    {
+      "id": "C-224",
+      "category": "doctor-check-scriptable",
+      "description": "Doctor checks that the terminal has automation permission to script Mail.app. When scriptable, the check passes. When permission is denied (mocked), the check fails with a message referencing System Settings > Privacy & Security > Automation",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with mock simulating successful AppleScript execution against Mail.app",
+        "Verify output includes a passing check for automation permission",
+        "Mock the check to raise PermissionDeniedError",
+        "Verify the check fails with a message mentioning 'System Settings' and 'Privacy & Security' or 'Automation'"
+      ],
+      "threshold": "Scriptable check passes when permitted; fails referencing System Settings > Privacy & Security > Automation"
+    },
+    {
+      "id": "C-225",
+      "category": "doctor-check-accounts",
+      "description": "Doctor checks that at least one email account is configured in Mail.app. When accounts exist (mocked), the check passes showing the count. When no accounts are configured, the check fails with a message about configuring an account in Mail.app",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with mock returning 2 accounts",
+        "Verify the accounts check passes and output mentions the number of accounts found (e.g., '2 accounts')",
+        "Mock the check to return 0 accounts",
+        "Verify the check fails with a message about configuring an account in Mail.app preferences"
+      ],
+      "threshold": "Accounts check passes showing count; fails with guidance to configure accounts when none found"
+    },
+    {
+      "id": "C-226",
+      "category": "doctor-output-format",
+      "description": "Doctor output shows each check with a clear pass/fail indicator (e.g., checkmark/cross, PASS/FAIL, or similar). All checks are listed even if some fail — the command does not short-circuit on first failure",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with all checks passing and verify each check has a pass indicator",
+        "Mock multiple failures (e.g., Mail.app not running AND no accounts)",
+        "Run 'mailctl doctor' and verify BOTH failing checks are listed in the output, not just the first one",
+        "Verify passing checks still appear alongside failing checks"
+      ],
+      "threshold": "All checks always displayed with pass/fail indicators; no short-circuit on failure"
+    },
+    {
+      "id": "C-227",
+      "category": "doctor-exit-code",
+      "description": "Doctor exits with code 0 when all checks pass; exits with non-zero when any check fails",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor' with all checks passing",
+        "Verify exit code is 0",
+        "Run 'mailctl doctor' with one failing check (e.g., Mail.app not running)",
+        "Verify exit code is non-zero (1)",
+        "Run 'mailctl doctor' with multiple failing checks",
+        "Verify exit code is still non-zero (1)"
+      ],
+      "threshold": "Exit 0 when all pass; exit 1 when any fail"
+    },
+    {
+      "id": "C-228",
+      "category": "doctor-json",
+      "description": "'mailctl doctor --json' outputs a valid JSON object with a 'checks' array. Each check has at minimum: name, status ('pass'/'fail'), and message. The top-level object also has an 'all_passed' boolean",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor --json' with all checks passing",
+        "Parse stdout as JSON",
+        "Verify it has 'checks' (array, length >= 5) and 'all_passed' (boolean, true)",
+        "Verify each check object has 'name' (string), 'status' ('pass'), and 'message' (string)",
+        "Run 'mailctl doctor --json' with one failing check",
+        "Verify 'all_passed' is false and the failing check has status 'fail'"
+      ],
+      "threshold": "Valid JSON with checks array (name/status/message per check) and all_passed boolean"
+    },
+    {
+      "id": "C-229",
+      "category": "doctor-help",
+      "description": "'mailctl doctor --help' describes the command's purpose (diagnose Mail.app integration) and lists --json as an available option",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl doctor --help' via CliRunner",
+        "Verify output mentions diagnosing or checking Mail.app integration (or similar)",
+        "Verify --json is listed as an option"
+      ],
+      "threshold": "Help text describes diagnostic purpose and lists --json"
+    },
+    {
+      "id": "C-230",
+      "category": "error-format-consistency",
+      "description": "All error messages rendered via handle_mail_error and render_error follow the pattern 'Error: <problem>. <solution>.' — every error has both a problem description AND actionable guidance. Specifically, MailNotRunningError, PermissionDeniedError, and ScriptTimeoutError messages each include a solution component",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect src/mailctl/errors.py and verify each error class message contains both a problem and a solution",
+        "MailNotRunningError should mention launching Mail.app",
+        "PermissionDeniedError should mention System Settings path",
+        "ScriptTimeoutError should mention Mail.app being unresponsive and suggest a remedy (e.g., restart, check Mail.app)",
+        "Inspect output.py render_error format to verify it prefixes 'Error:'"
+      ],
+      "threshold": "All three typed error classes have 'problem. solution.' message format; render_error prefixes 'Error:'"
+    },
+    {
+      "id": "C-231",
+      "category": "error-format-consistency",
+      "description": "Validation errors across all commands (accounts, mailboxes, messages, compose, reply, forward, mark, move, delete, drafts edit) use render_error for output (not ad-hoc console.print or typer.echo) and exit with EXIT_USAGE_ERROR (2) for user input errors vs EXIT_GENERAL_ERROR (1) for runtime/AppleScript errors",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Grep all command files for calls that render error messages",
+        "Verify that user-input validation errors (bad arguments, missing required options, mutually exclusive flags) use render_error or raise typer.BadParameter and exit with code 2",
+        "Verify that runtime errors (AppleScript failures, Mail.app issues) use handle_mail_error and exit with code 1",
+        "Check that no command uses ad-hoc err_console.print or typer.echo for error messages (except cli.py's top-level handler)"
+      ],
+      "threshold": "Consistent error rendering via render_error/handle_mail_error; code 2 for usage, code 1 for runtime"
+    },
+    {
+      "id": "C-232",
+      "category": "error-account-not-found",
+      "description": "When --account specifies a non-existent account, all commands that accept --account (mailboxes list, messages list, messages show, messages search, messages mark, messages move, messages delete, compose --from, reply, forward) produce a consistent error message listing known accounts. The error format is: 'Error: Account \"<name>\" not found. Known accounts: <list>.'",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "For at least 3 commands that accept --account (e.g., mailboxes list, messages list, compose), invoke with --account 'NonexistentAccount' and mock_osascript returning known accounts",
+        "Verify each produces an error message matching the pattern: contains 'not found' and lists known account names",
+        "Verify exit code is non-zero for each"
+      ],
+      "threshold": "At least 3 commands tested; all produce consistent account-not-found error with known accounts listed"
+    },
+    {
+      "id": "C-233",
+      "category": "error-mailbox-not-found",
+      "description": "When --mailbox or --to (for move) specifies a non-existent mailbox, commands produce a clear error. The error message mentions the mailbox name and provides guidance (e.g., 'use mailctl mailboxes list to see available mailboxes')",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages list --mailbox NonexistentBox' with mock_osascript simulating mailbox-not-found",
+        "Verify exit code is non-zero",
+        "Verify error message mentions 'NonexistentBox' and provides guidance on listing mailboxes",
+        "Run 'mailctl messages move 12345 --to NonexistentBox' with mock simulating failure",
+        "Verify similar error pattern"
+      ],
+      "threshold": "Mailbox-not-found errors mention the mailbox name and suggest listing available mailboxes"
+    },
+    {
+      "id": "C-234",
+      "category": "error-message-not-found",
+      "description": "When a command references a non-existent message ID (show, reply, forward, mark, move, delete, drafts edit), the error message mentions the ID and suggests the user verify it. The error is consistent across all commands that accept message IDs",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "For at least 3 commands that accept a message ID (e.g., messages show, messages mark, messages delete), invoke with a non-existent ID and mock an AppleScript error",
+        "Verify each produces an error referencing the message ID",
+        "Verify exit code is non-zero for each"
+      ],
+      "threshold": "At least 3 commands produce clear 'message not found' errors mentioning the ID"
+    },
+    {
+      "id": "C-235",
+      "category": "error-empty-results",
+      "description": "When a list/search command returns zero results, it produces a helpful message rather than an empty table or silent output. 'mailctl messages list' with no matching messages outputs 'No messages found.' (or similar). 'mailctl messages search' with no results outputs 'No messages matched your search.'",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages list --mailbox INBOX' with mock_osascript returning empty results",
+        "Verify stdout contains a 'no messages' indicator (not just an empty table)",
+        "Run 'mailctl messages search --from nobody@example.com' with mock returning empty results",
+        "Verify stdout contains a 'no results' or 'no messages matched' indicator"
+      ],
+      "threshold": "Empty-result commands show a clear message instead of empty/silent output"
+    },
+    {
+      "id": "C-236",
+      "category": "error-stdin-body",
+      "description": "When compose, reply, or forward reads body from stdin and stdin is empty/TTY with no data, the error message clearly explains that body is required and suggests using --body, --body-file, or piping from stdin",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl compose --to test@example.com --subject \"Test\"' via CliRunner with no stdin, --body, or --body-file",
+        "Verify exit code is non-zero",
+        "Verify the error message mentions at least two of: --body, --body-file, stdin as alternatives"
+      ],
+      "threshold": "Empty-body error mentions available body input methods"
+    },
+    {
+      "id": "C-237",
+      "category": "error-attach-not-found",
+      "description": "When --attach references a file that does not exist, the error message includes the file path and states the file was not found. This applies to compose, reply, forward, and drafts edit",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl compose --to test@example.com --subject \"Test\" --body \"Hello\" --attach /nonexistent/file.pdf' via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify error message contains the file path '/nonexistent/file.pdf' and states it was not found or does not exist"
+      ],
+      "threshold": "Attachment not-found error includes the file path"
+    },
+    {
+      "id": "C-238",
+      "category": "doctor-no-color",
+      "description": "'mailctl doctor --no-color' produces output without Rich styling/ANSI codes. The check results are still human-readable but without colour escape sequences",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl doctor --no-color' via CliRunner with mocks for all checks passing",
+        "Verify exit code is 0",
+        "Verify output does not contain ANSI escape codes (no \\x1b[ sequences)",
+        "Verify the check results are still present and readable"
+      ],
+      "threshold": "--no-color produces plain text output without ANSI escape codes"
+    },
+    {
+      "id": "C-239",
+      "category": "doctor-architecture",
+      "description": "Doctor command implementation follows the established project patterns: registered via a register() function in its own module (src/mailctl/commands/doctor.py), uses the shared output utilities from mailctl.output, and the doctor check logic is testable (individual checks can be mocked independently)",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Verify src/mailctl/commands/doctor.py exists",
+        "Verify it exports a register() function called from cli.py",
+        "Verify individual checks are implemented as separate functions or a clear sequence that can be mocked independently in tests",
+        "Verify it imports from mailctl.output for rendering (render_error or equivalent)",
+        "Verify cli.py registers the doctor command on the main app (not a subcommand group)"
+      ],
+      "threshold": "Doctor module follows project patterns; individual checks independently testable"
+    },
+    {
+      "id": "C-240",
+      "category": "testing-doctor",
+      "description": "Comprehensive unit tests exist for the doctor command covering: all checks passing, individual check failures (osascript missing, Mail.app not installed, not running, permission denied, no accounts), multiple simultaneous failures, --json output, --no-color, exit codes for pass and fail",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect tests/unit/ for a doctor test file (test_doctor.py or similar)",
+        "Verify tests cover at minimum: all-pass scenario, osascript-missing, Mail-not-installed, Mail-not-running, permission-denied, no-accounts, multiple failures, --json pass, --json fail, exit code 0 on pass, exit code 1 on fail",
+        "Run the doctor tests and verify they all pass"
+      ],
+      "threshold": "At least 11 doctor test cases covering the above scenarios, all passing"
+    },
+    {
+      "id": "C-241",
+      "category": "testing-errors",
+      "description": "Unit tests exist verifying the polished error messages for: account not found (at least 2 commands), empty results (messages list and search), and at least one attachment-not-found scenario",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect unit tests for error-polish test cases",
+        "Verify at least 2 tests for account-not-found consistency across different commands",
+        "Verify at least 1 test for empty-results messaging",
+        "Verify at least 1 test for attachment-not-found messaging",
+        "Run these tests and verify they pass"
+      ],
+      "threshold": "At least 4 error-polish-specific test cases, all passing"
+    },
+    {
+      "id": "C-242",
+      "category": "testing-full-suite",
+      "description": "Full test suite (pytest from project root) passes with zero failures, including all Sprint 1-8 tests and new Sprint 9 tests",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from the project root",
+        "Verify all tests pass (0 failures, 0 errors)",
+        "Verify Sprint 1-8 tests still pass (regression)"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-243",
+      "category": "regression",
+      "description": "All Sprint 1-8 commands still work: '--version', accounts list, mailboxes list, messages list/show/search/mark/move/delete, compose, reply, forward, drafts edit — with unchanged options and outputs",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version' and verify version output",
+        "Run 'mailctl --help' and verify all command groups are listed including accounts, mailboxes, messages, compose, reply, forward, drafts, and the new doctor command",
+        "Run the full Sprint 1-8 unit test suite and verify all tests pass"
+      ],
+      "threshold": "All Sprint 1-8 functionality preserved; no test regressions"
+    }
+  ],
+  "outOfScope": [
+    "Auto-launching Mail.app from doctor — doctor reports whether Mail.app is running but does not offer to launch it in this sprint (spec mentions 'offer to launch' but this is deferred to avoid interactive prompts in the doctor flow)",
+    "Network connectivity checks — doctor does not check whether email accounts can actually reach their IMAP/Exchange servers; it only checks local Mail.app configuration",
+    "Error message localisation — all error messages are in English only",
+    "Retry logic for transient errors — errors are reported clearly but the CLI does not auto-retry on timeout or temporary failures",
+    "Shell completions (Sprint 10)",
+    "Integration tests against real Mail.app (Sprint 10)",
+    "Help text quality review (Sprint 10 — minor help text polish belongs there alongside completions)"
+  ],
+  "regressionSprints": [1, 2, 3, 4, 5, 6, 7, 8],
+  "safetyNotes": {
+    "doctorIsReadOnly": "The 'mailctl doctor' command performs only read-only checks: querying osascript availability, checking if Mail.app is running, testing automation permissions, and counting accounts. It never creates, modifies, or sends anything.",
+    "errorPolishIsNonDestructive": "Error message improvements are string/formatting changes only — they do not alter any command's functional behaviour, safety model, or exit codes (except potentially standardising exit code 2 for usage errors where it was inconsistently applied).",
+    "evalTestingSafety": "The evaluator MAY run 'mailctl doctor' against real Mail.app (it is entirely read-only). All other testing of error messages should use mocked osascript."
+  }
+}
