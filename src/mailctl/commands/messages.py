@@ -1,4 +1,4 @@
-"""Messages commands — list and show Mail.app messages.
+"""Messages commands — list, show, and search Mail.app messages.
 
 Generates AppleScript to query messages in a mailbox with filters (unread,
 sender, subject, date range), parses the delimited output, and renders via
@@ -11,6 +11,10 @@ Architecture:
 - ``build_message_show_script()`` — generates AppleScript to show one message
 - ``parse_message_show_output()`` — turns raw osascript stdout into a dict
 - ``fetch_message()`` — orchestrates script + engine + parse for show
+- ``build_account_names_script()`` — generates AppleScript to list account names
+- ``build_search_script()`` — generates AppleScript to search one account
+- ``parse_search_output()`` — turns raw search output into dicts
+- ``fetch_search_results()`` — orchestrates cross-account search
 - ``register()`` — Typer command handlers (thin layer)
 """
 
@@ -28,7 +32,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from mailctl.engine import run_applescript
-from mailctl.errors import AppleScriptError
+from mailctl.errors import AppleScriptError, EXIT_USAGE_ERROR
 from mailctl.output import (
     ColumnDef,
     handle_mail_error,
@@ -409,6 +413,272 @@ def fetch_message(message_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# AppleScript generation — account names (for cross-account search)
+# --------------------------------------------------------------------------- #
+
+def build_account_names_script() -> str:
+    """Return AppleScript that lists all account names.
+
+    Output format: one account name per line.
+    """
+    return '''\
+tell application "Mail"
+    set output to ""
+    set acctNames to name of every account
+    repeat with n in acctNames
+        if output is not "" then set output to output & linefeed
+        set output to output & (n as string)
+    end repeat
+    return output
+end tell'''
+
+
+def parse_account_names_output(raw: str) -> list[str]:
+    """Parse account names output into a list of strings."""
+    if not raw.strip():
+        return []
+    return [line.strip() for line in raw.strip().split("\n") if line.strip()]
+
+
+# --------------------------------------------------------------------------- #
+# AppleScript generation — search messages across mailboxes of one account
+# --------------------------------------------------------------------------- #
+
+def build_search_script(
+    *,
+    account: str,
+    mailbox: str | None = None,
+    include_body: bool = False,
+) -> str:
+    """Return AppleScript that fetches messages across mailboxes of *account*.
+
+    Output format (one line per message, ``||``-delimited)::
+
+        mailbox_name||message_id||date||sender||subject||read_flag||flagged_flag
+
+    When *include_body* is ``True``, body content is appended as an 8th field
+    with newlines replaced by ``@@NL@@`` to keep one-line-per-message format.
+
+    When *mailbox* is given, only that mailbox is searched.  Otherwise all
+    mailboxes of the account are searched.
+    """
+    body_block = ""
+    body_field = ""
+    if include_body:
+        body_block = '''
+            set msgBody to content of msg
+            set oldDelims to AppleScript's text item delimiters
+            set AppleScript's text item delimiters to {return, linefeed, character id 10}
+            set bodyParts to text items of msgBody
+            set AppleScript's text item delimiters to "@@NL@@"
+            set cleanBody to bodyParts as text
+            set AppleScript's text item delimiters to oldDelims'''
+        body_field = ' & "||" & cleanBody'
+
+    if mailbox:
+        # Search a specific mailbox within the account.
+        return f'''\
+tell application "Mail"
+    set output to ""
+    set acct to account "{account}"
+    set mbox to mailbox "{mailbox}" of acct
+    set mboxName to name of mbox
+    set msgs to every message of mbox
+    repeat with msg in msgs
+        set msgId to id of msg as string
+        set msgDate to date received of msg as string
+        set msgSender to sender of msg
+        set msgSubject to subject of msg
+        set msgRead to read status of msg as string
+        set msgFlagged to flagged status of msg as string{body_block}
+        if output is not "" then set output to output & linefeed
+        set output to output & mboxName & "||" & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged{body_field}
+    end repeat
+    return output
+end tell'''
+    else:
+        # Search all mailboxes in the account.
+        return f'''\
+tell application "Mail"
+    set output to ""
+    set acct to account "{account}"
+    set mboxes to every mailbox of acct
+    repeat with mbox in mboxes
+        set mboxName to name of mbox
+        set msgs to every message of mbox
+        repeat with msg in msgs
+            set msgId to id of msg as string
+            set msgDate to date received of msg as string
+            set msgSender to sender of msg
+            set msgSubject to subject of msg
+            set msgRead to read status of msg as string
+            set msgFlagged to flagged status of msg as string{body_block}
+            if output is not "" then set output to output & linefeed
+            set output to output & mboxName & "||" & msgId & "||" & msgDate & "||" & msgSender & "||" & msgSubject & "||" & msgRead & "||" & msgFlagged{body_field}
+        end repeat
+    end repeat
+    return output
+end tell'''
+
+
+# --------------------------------------------------------------------------- #
+# Parsing — search results
+# --------------------------------------------------------------------------- #
+
+def parse_search_output(raw: str, account_name: str) -> list[dict]:
+    """Parse ``||``-delimited search output into structured data.
+
+    Each line has at least 7 fields:
+    ``mailbox||id||date||from||subject||read||flagged[||body]``
+
+    Returns a list of dicts with keys: ``account``, ``mailbox``, ``id``,
+    ``date``, ``from``, ``subject``, ``read``, ``flagged``, and optionally
+    ``_body`` (prefixed with underscore — internal, not exposed in output).
+    """
+    if not raw.strip():
+        return []
+
+    messages: list[dict] = []
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Split into at most 8 parts so body (which may contain ||) stays intact.
+        parts = line.split("||", 7)
+        if len(parts) >= 7:
+            msg: dict = {
+                "account": account_name,
+                "mailbox": parts[0].strip(),
+                "id": parts[1].strip(),
+                "date": parts[2].strip(),
+                "from": parts[3].strip(),
+                "subject": parts[4].strip(),
+                "read": parts[5].strip().lower() == "true",
+                "flagged": parts[6].strip().lower() == "true",
+            }
+            if len(parts) > 7:
+                # Body content (with @@NL@@ markers for newlines).
+                msg["_body"] = parts[7].replace("@@NL@@", "\n")
+            messages.append(msg)
+    return messages
+
+
+# --------------------------------------------------------------------------- #
+# Filtering — search results (extends existing _apply_filters)
+# --------------------------------------------------------------------------- #
+
+def _apply_search_filters(
+    messages: list[dict],
+    *,
+    from_filter: str | None = None,
+    subject_filter: str | None = None,
+    body_filter: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+) -> list[dict]:
+    """Apply post-fetch filters to search results.
+
+    All filters are applied conjunctively (AND).
+    """
+    result = messages
+
+    if from_filter:
+        lower_from = from_filter.lower()
+        result = [m for m in result if lower_from in m["from"].lower()]
+
+    if subject_filter:
+        lower_subject = subject_filter.lower()
+        result = [m for m in result if lower_subject in m["subject"].lower()]
+
+    if body_filter:
+        lower_body = body_filter.lower()
+        result = [
+            m for m in result
+            if lower_body in m.get("_body", "").lower()
+        ]
+
+    if since:
+        since_date = datetime.strptime(since, "%Y-%m-%d")
+        result = [m for m in result if _is_on_or_after(m["date"], since_date)]
+
+    if before:
+        before_date = datetime.strptime(before, "%Y-%m-%d")
+        result = [m for m in result if _is_before(m["date"], before_date)]
+
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# Data fetching — cross-account search
+# --------------------------------------------------------------------------- #
+
+def fetch_search_results(
+    *,
+    account: str | None = None,
+    mailbox: str | None = None,
+    from_filter: str | None = None,
+    subject_filter: str | None = None,
+    body_filter: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+) -> list[dict]:
+    """Search messages across accounts via AppleScript.
+
+    Uses at most *N* + 1 osascript calls for *N* accounts: one call to list
+    account names, then one per account to search.  When ``--account`` is
+    given, only one search call is made (no account-list call).
+
+    Returns a list of message dicts (with ``account`` and ``mailbox`` fields),
+    filtered, sorted newest-first, and capped at *limit*.
+    Raises :class:`AppleScriptError` on failure.
+    """
+    include_body = body_filter is not None
+
+    # Determine which accounts to search.
+    if account:
+        account_names = [account]
+    else:
+        raw_accounts = run_applescript(build_account_names_script())
+        account_names = parse_account_names_output(raw_accounts)
+
+    # Search each account.
+    all_messages: list[dict] = []
+    for acct_name in account_names:
+        script = build_search_script(
+            account=acct_name,
+            mailbox=mailbox,
+            include_body=include_body,
+        )
+        raw = run_applescript(script)
+        msgs = parse_search_output(raw, acct_name)
+        all_messages.extend(msgs)
+
+    # Apply filters.
+    all_messages = _apply_search_filters(
+        all_messages,
+        from_filter=from_filter,
+        subject_filter=subject_filter,
+        body_filter=body_filter,
+        since=since,
+        before=before,
+    )
+
+    # Sort by date descending (newest first).
+    all_messages = _sort_by_date_descending(all_messages)
+
+    # Apply limit.
+    if limit > 0:
+        all_messages = all_messages[:limit]
+
+    # Strip internal _body field before returning.
+    for msg in all_messages:
+        msg.pop("_body", None)
+
+    return all_messages
+
+
+# --------------------------------------------------------------------------- #
 # Table column definitions
 # --------------------------------------------------------------------------- #
 
@@ -418,6 +688,15 @@ MESSAGES_COLUMNS = [
     ColumnDef(header="Subject", key="subject", max_width=40),
     ColumnDef(header="Read", key="read", max_width=8),
     ColumnDef(header="Flagged", key="flagged", max_width=8),
+    ColumnDef(header="ID", key="id", max_width=15),
+]
+
+SEARCH_COLUMNS = [
+    ColumnDef(header="Account", key="account", max_width=20),
+    ColumnDef(header="Mailbox", key="mailbox", max_width=15),
+    ColumnDef(header="Date", key="date", max_width=25),
+    ColumnDef(header="From", key="from", max_width=25),
+    ColumnDef(header="Subject", key="subject", max_width=35),
     ColumnDef(header="ID", key="id", max_width=15),
 ]
 
@@ -494,6 +773,89 @@ def register(messages_app: typer.Typer) -> None:
             json_mode=json_mode,
             no_color=no_color,
             title="Messages",
+        )
+
+    @messages_app.command(
+        "search",
+        help="Search messages across accounts with filters.",
+    )
+    def messages_search(
+        ctx: typer.Context,
+        from_filter: Optional[str] = typer.Option(
+            None, "--from", "-f",
+            help="Filter by sender (case-insensitive substring match).",
+        ),
+        subject_filter: Optional[str] = typer.Option(
+            None, "--subject", "-s",
+            help="Filter by subject (case-insensitive substring match).",
+        ),
+        body_filter: Optional[str] = typer.Option(
+            None, "--body", "-b",
+            help="Filter by body content (case-insensitive substring match).",
+        ),
+        since: Optional[str] = typer.Option(
+            None, "--since",
+            help="Show messages on or after this date (YYYY-MM-DD).",
+        ),
+        before: Optional[str] = typer.Option(
+            None, "--before",
+            help="Show messages before this date (YYYY-MM-DD).",
+        ),
+        account: Optional[str] = typer.Option(
+            None, "--account", "-a",
+            help="Scope search to a specific account name.",
+        ),
+        mailbox: Optional[str] = typer.Option(
+            None, "--mailbox", "-m",
+            help="Scope search to a specific mailbox within the targeted account(s).",
+        ),
+        limit: int = typer.Option(
+            DEFAULT_LIMIT, "--limit", "-l",
+            help=f"Maximum number of results to return (default: {DEFAULT_LIMIT}).",
+        ),
+        json_output: bool = typer.Option(
+            False, "--json",
+            help="Output results as JSON.",
+        ),
+    ) -> None:
+        """Search messages across all accounts with filters.
+
+        At least one search filter (--from, --subject, --body, --since, or
+        --before) is required.
+        """
+        ctx.ensure_object(dict)
+        json_mode = json_output or ctx.obj.get("json", False)
+        no_color = ctx.obj.get("no_color", False)
+
+        # Require at least one search filter.
+        if not any([from_filter, subject_filter, body_filter, since, before]):
+            render_error(
+                "At least one search criterion is required "
+                "(--from, --subject, --body, --since, or --before).",
+                no_color=no_color,
+            )
+            raise typer.Exit(code=EXIT_USAGE_ERROR)
+
+        try:
+            data = fetch_search_results(
+                account=account,
+                mailbox=mailbox,
+                from_filter=from_filter,
+                subject_filter=subject_filter,
+                body_filter=body_filter,
+                since=since,
+                before=before,
+                limit=limit,
+            )
+        except AppleScriptError as exc:
+            handle_mail_error(exc, no_color=no_color)
+
+        render_output(
+            data,
+            SEARCH_COLUMNS,
+            json_mode=json_mode,
+            no_color=no_color,
+            title="Search Results",
         )
 
     @messages_app.command("show", help="Show a single message by ID.")
