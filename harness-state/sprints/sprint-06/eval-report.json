@@ -1,0 +1,178 @@
+{
+  "sprintNumber": 6,
+  "overallResult": "PASS",
+  "passCount": 27,
+  "failCount": 0,
+  "criteriaResults": [
+    {
+      "id": "C-131",
+      "result": "PASS",
+      "evidence": "TestReplyBasic: test_reply_exit_zero and test_reply_osascript_called_at_least_twice both pass. 'mailctl reply 12345 --body Thanks' exits 0 with at least 2 mock osascript calls (fetch + reply)."
+    },
+    {
+      "id": "C-132",
+      "result": "PASS",
+      "evidence": "TestReplyRecipients::test_reply_to_sender_only passes. Reply script contains alice@example.com as the sole recipient; bob@example.com and carol@example.com are excluded from the generated AppleScript."
+    },
+    {
+      "id": "C-133",
+      "result": "PASS",
+      "evidence": "TestReplyAll: all 3 tests pass. Reply --all includes alice@example.com and bob@example.com as 'to recipient', carol@example.com as 'cc recipient', and user@example.com is excluded from all recipient lines."
+    },
+    {
+      "id": "C-134",
+      "result": "PASS",
+      "evidence": "TestForwardBasic: forward exits 0 with --to, fails without --to (non-zero exit), and multiple --to addresses (a@x.com, b@x.com) both appear in generated AppleScript. All 3 tests pass."
+    },
+    {
+      "id": "C-135",
+      "result": "PASS",
+      "evidence": "TestOriginalContent: 4 tests pass. Both reply and forward include the user's new body text and 'Original body text' in the AppleScript, with attribution line containing sender email and 'wrote'."
+    },
+    {
+      "id": "C-136",
+      "result": "PASS",
+      "evidence": "TestBodySources: all 5 tests pass. --body, --body-file, and stdin all work for reply. --body + --body-file together produces error. Forward parity confirmed with --body-file test."
+    },
+    {
+      "id": "C-137",
+      "result": "PASS",
+      "evidence": "TestAttachments: 3 tests pass. Reply with two --attach paths includes both in AppleScript. Forward --attach includes path. Non-existent attachment file /nonexistent produces non-zero exit before any osascript call."
+    },
+    {
+      "id": "C-138",
+      "result": "PASS",
+      "evidence": "TestReplyDefaultDraft: 3 tests pass. Without --dangerously-send, no script in mock_osascript.calls contains 'send replyMsg', 'send fwdMsg', or similar. Output contains 'draft'. Script uses Mail.app's reply construct."
+    },
+    {
+      "id": "C-139",
+      "result": "PASS",
+      "evidence": "TestForwardDefaultDraft: 2 tests pass. Without --dangerously-send, no script contains 'send fwdMsg'. Output mentions 'draft'."
+    },
+    {
+      "id": "C-140",
+      "result": "PASS",
+      "evidence": "TestReplyDangerouslySend: 2 tests pass. With --dangerously-send --yes, the reply script contains 'send replyMsg'. Output reports 'sent'. Verified via mock only — no real email sent."
+    },
+    {
+      "id": "C-141",
+      "result": "PASS",
+      "evidence": "TestForwardDangerouslySend: 2 tests pass. With --dangerously-send --yes, forward script contains 'send fwdMsg'. Output reports 'sent'. Mock-only verification."
+    },
+    {
+      "id": "C-142",
+      "result": "PASS",
+      "evidence": "TestConfirmationDecline: 2 tests pass. Empty input at reply prompt and 'n' at forward prompt both result in no 'send' verb in any osascript call. Output indicates cancellation."
+    },
+    {
+      "id": "C-143",
+      "result": "PASS",
+      "evidence": "TestYesAlone: 2 tests pass. --yes without --dangerously-send on both reply and forward creates drafts. No 'send' verb in any script. Output mentions 'draft'."
+    },
+    {
+      "id": "C-144",
+      "result": "PASS",
+      "evidence": "Code inspection: grep for 'envvar' in reply_forward.py finds only docstring references. The dangerously_send typer.Option at lines 648 and 854 has no envvar= parameter. No os.environ, getenv, or config file mechanism sets this flag. Safety-as-architecture principle holds."
+    },
+    {
+      "id": "C-145",
+      "result": "PASS",
+      "evidence": "TestReplyDryRun: 2 tests pass. --dry-run on reply describes draft action, no compose/send script executed (only read-only fetch is acceptable). --dry-run + --dangerously-send --yes describes 'send' but no send script executed."
+    },
+    {
+      "id": "C-146",
+      "result": "PASS",
+      "evidence": "TestForwardDryRun: 2 tests pass. --dry-run on forward describes draft action without executing forward AppleScript. --dry-run + --dangerously-send --yes describes 'send' but no send script executed."
+    },
+    {
+      "id": "C-147",
+      "result": "PASS",
+      "evidence": "TestReplyThreading: test passes. Reply AppleScript contains '12345' (original message ID) and uses Mail.app's 'reply' verb ('reply originalMsg with opening window') to preserve threading."
+    },
+    {
+      "id": "C-148",
+      "result": "PASS",
+      "evidence": "TestHumanOutput: 3 tests pass. Reply draft output contains 'draft' and subject 'Hello'. Forward draft output contains 'draft'. Reply sent output contains 'sent'."
+    },
+    {
+      "id": "C-149",
+      "result": "PASS",
+      "evidence": "TestJSONOutput: 2 tests pass. Reply --json outputs valid JSON with action='draft', to, subject, id keys. Forward --json includes action='draft', to contains 'a@x.com', original_message_id='12345'."
+    },
+    {
+      "id": "C-150",
+      "result": "PASS",
+      "evidence": "TestMessageNotFound: 2 tests pass. Reply and forward with mock error 'Can't get message id 99999' both produce non-zero exit with error message mentioning the issue."
+    },
+    {
+      "id": "C-151",
+      "result": "PASS",
+      "evidence": "TestMailNotRunning: 2 tests pass. Mock error 'application isn't running' produces non-zero exit and output/stderr mentions 'mail' for both reply and forward."
+    },
+    {
+      "id": "C-152",
+      "result": "PASS",
+      "evidence": "CLI execution: 'mailctl --help' lists reply, forward, compose, accounts, mailboxes, and messages as top-level commands. Verified via both unit tests (TestTopLevelHelp, 3 tests pass) and direct CLI execution."
+    },
+    {
+      "id": "C-153",
+      "result": "PASS",
+      "evidence": "CLI execution: 'mailctl reply --help' lists all 8 expected flags (--body, --body-file, --attach, --dangerously-send, --yes, --dry-run, --json, --all). Warning about irreversible sending present. 'mailctl forward --help' lists --to, --body, --body-file, --attach, --dangerously-send, --yes, --dry-run, --json with appropriate warnings. Unit tests (3 tests) also pass."
+    },
+    {
+      "id": "C-154",
+      "result": "PASS",
+      "evidence": "TestReplySafetyModel: 8 tests cover bypass scenarios (bare reply, --yes, --dry-run, --json, --attach, --body-file, --all, --all --yes). TestForwardSafetyModel: 8 tests cover (bare forward, --yes, --dry-run, multiple --to, --json, --yes --json, --attach, --body-file). All 16 tests pass. Exceeds the 6+6 minimum."
+    },
+    {
+      "id": "C-155",
+      "result": "PASS",
+      "evidence": "Full pytest run: 369 tests collected, 369 passed, 0 failures, 0 errors, exit code 0. Includes all Sprint 1-5 tests and 81 new Sprint 6 tests."
+    },
+    {
+      "id": "C-156",
+      "result": "PASS",
+      "evidence": "Code inspection: build_reply_script() (line 188) and build_forward_script() (line 264) generate AppleScript. perform_reply() (line 394) and perform_forward() (line 437) orchestrate. register() (line 602) provides thin Typer wrappers. Shared utilities imported from compose: _escape_applescript_string, resolve_body. Error handling via shared handle_mail_error, render_error from output module. No code duplication."
+    },
+    {
+      "id": "C-157",
+      "result": "PASS",
+      "evidence": "'mailctl --version' outputs 'mailctl 0.1.0'. '--help' lists all commands including new reply/forward. Full pytest suite (369 tests) passes with 0 failures, confirming Sprint 1-5 functionality preserved."
+    }
+  ],
+  "regressionResults": {
+    "sprintsChecked": [1, 2, 3, 4, 5],
+    "allPassed": true,
+    "details": "Full test suite (369 tests) passes with 0 failures. Sprint 1 (accounts, engine, errors, output), Sprint 2 (mailboxes), Sprint 3 (messages list/show), Sprint 4 (cross-account search), Sprint 5 (compose + safety model) — all tests continue to pass. CLI --version and --help verified directly. No regressions detected."
+  },
+  "holistic": {
+    "profileUsed": "cli-tool",
+    "dimensions": {
+      "Correctness": {
+        "score": 9,
+        "notes": "All 27 criteria pass. Reply/forward correctly handle recipients, body sources, attachments, threading, safety model, and output modes. No edge case failures observed."
+      },
+      "Safety": {
+        "score": 10,
+        "notes": "Ironclad safety model: no envvar/config bypass, default-to-No confirmation, --dangerously-send is the only send path. 16 parametrised safety tests cover bypass attempts. Code inspection confirms no implicit send mechanism. Matches compose's safety architecture exactly."
+      },
+      "Ergonomics": {
+        "score": 9,
+        "notes": "Help text is genuinely useful with clear warnings on --dangerously-send. Reply --all, --dry-run, --json, and body sources all work intuitively. Human output clearly distinguishes draft from sent. JSON output includes all necessary fields."
+      },
+      "Architecture": {
+        "score": 9,
+        "notes": "Excellent code reuse from compose module (resolve_body, _escape_applescript_string). Clean build/perform/register separation. Thin Typer command handlers delegate to well-named functions. 986 lines of implementation is substantial but well-structured."
+      },
+      "Test Quality": {
+        "score": 9,
+        "notes": "81 tests across 20 test classes covering all criteria. Parametrised safety model tests exceed requirements (8+8 vs 6+6 minimum). Helper functions tested directly. Good use of mock_osascript fixture with multi-output support."
+      },
+      "Error Handling": {
+        "score": 9,
+        "notes": "Message not found, Mail.app not running, nonexistent attachments, conflicting body sources — all produce clear errors with non-zero exit codes. Error patterns consistent with prior sprints."
+      }
+    }
+  },
+  "notes": "Sprint 6 is a comprehensive implementation of reply and forward commands with the same safety guarantees as compose. The generator delivered all 27 criteria in a single attempt. The code follows established patterns, reuses shared utilities, and introduces no regressions across the prior 288 tests. The safety model is rigorously tested with 16 parametrised bypass-attempt scenarios, all confirming no 'send' verb leaks without --dangerously-send."
+}
