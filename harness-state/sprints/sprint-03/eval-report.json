@@ -1,0 +1,179 @@
+{
+  "sprintNumber": 3,
+  "overallResult": "PASS",
+  "passCount": 28,
+  "failCount": 0,
+  "criteriaResults": [
+    {
+      "id": "C-051",
+      "result": "PASS",
+      "evidence": "'mailctl messages list' via CliRunner with mock returning THREE_MESSAGES_OUTPUT exits 0. Output contains subjects 'Hello World', 'Test Message', 'Greetings'. Test: TestMessagesListSuccess (3 test functions, all pass)."
+    },
+    {
+      "id": "C-052",
+      "result": "PASS",
+      "evidence": "JSON output contains all six fields per message: id, date, from, subject, read (bool), flagged (bool). MESSAGES_COLUMNS defines 6 columns (Date, From, Subject, Read, Flagged, ID) with max_width truncation. Tests: TestMessagesListTableColumns (2 functions, all pass)."
+    },
+    {
+      "id": "C-053",
+      "result": "PASS",
+      "evidence": "Default invocation generates AppleScript containing 'INBOX'. With '--mailbox Sent', script contains '\"Sent\"'. Both invocations exit 0. build_messages_list_script() defaults mailbox='INBOX'. Tests: TestMessagesListDefaultMailbox (3 functions, all pass)."
+    },
+    {
+      "id": "C-054",
+      "result": "PASS",
+      "evidence": "'--account Work' produces AppleScript containing '\"Work\"' and 'account'. Command exits 0. build_messages_list_script(account='Work') generates 'mailbox \"INBOX\" of account \"Work\"'. Tests: TestMessagesListAccount (2 functions, all pass)."
+    },
+    {
+      "id": "C-055",
+      "result": "PASS",
+      "evidence": "'--unread --json' with 5-message mock (3 unread, 2 read) returns exactly 3 messages, all with read=false. Messages 102 and 104 (read=true) are excluded. Tests: TestMessagesListUnreadFilter (2 functions, all pass)."
+    },
+    {
+      "id": "C-056",
+      "result": "PASS",
+      "evidence": "'--from alice --json' returns only 2 messages from alice@example.com. '--from Alice' (uppercase A) also returns 2 — case-insensitive. Bob and charlie excluded. Tests: TestMessagesListFromFilter (3 functions, all pass)."
+    },
+    {
+      "id": "C-057",
+      "result": "PASS",
+      "evidence": "'--subject invoice --json' returns 2 messages (Invoice #1234, Invoice Summary). '--subject INVOICE' also returns 2 — case-insensitive. Tests: TestMessagesListSubjectFilter (2 functions, all pass)."
+    },
+    {
+      "id": "C-058",
+      "result": "PASS",
+      "evidence": "'--since 2025-01-01' excludes Dec 2024 message (104), returns 4. '--before 2025-01-10' excludes Jan 10 and Feb 4, returns 3. Combined '--since 2025-01-01 --before 2025-02-01' returns 3 (Jan only). --since alone and --before alone both work independently. Tests: TestMessagesListDateFilters (5 functions, all pass)."
+    },
+    {
+      "id": "C-059",
+      "result": "PASS",
+      "evidence": "'--limit 2 --json' returns at most 2 messages. DEFAULT_LIMIT constant equals 25. Without --limit, 30 mocked messages yield exactly 25 in output. Tests: TestMessagesListLimit (3 functions, all pass)."
+    },
+    {
+      "id": "C-060",
+      "result": "PASS",
+      "evidence": "JSON output with 5 messages returns IDs in order: ['105', '101', '102', '103', '104'] — Feb 4, Jan 10, Jan 9, Jan 8, Dec 15 — newest first. _sort_by_date_descending() confirmed. Test: TestMessagesListSorting::test_newest_first passes."
+    },
+    {
+      "id": "C-061",
+      "result": "PASS",
+      "evidence": "'--json' produces valid JSON array. Each object has id, date, from, subject, read (bool), flagged (bool). Parsed as JSON successfully, isinstance checks pass. Tests: TestMessagesListJSON (4 functions, all pass)."
+    },
+    {
+      "id": "C-062",
+      "result": "PASS",
+      "evidence": "mock_osascript.calls has length 1 after 'messages list', including with filters and --json. Single osascript call confirmed via batch AppleScript design. Tests: TestMessagesListBatchCall (3 functions, all pass)."
+    },
+    {
+      "id": "C-063",
+      "result": "PASS",
+      "evidence": "'mailctl messages show 12345' exits 0. Output contains: alice@example.com (from), bob@example.com (to), dave@example.com (cc), Invoice #1234 (subject), 'Please find the invoice attached' (body), date info. Tests: TestMessagesShowSuccess (7 functions, all pass)."
+    },
+    {
+      "id": "C-064",
+      "result": "PASS",
+      "evidence": "Show output includes attachment filenames (invoice.pdf, receipt.png), sizes (45678, 12345), and MIME types (application/pdf, image/png). Parsed from @@ATTACHMENTS@@ section. Tests: TestMessagesShowAttachments (3 functions, all pass)."
+    },
+    {
+      "id": "C-065",
+      "result": "PASS",
+      "evidence": "'--headers' flag displays Message-ID, Content-Type from @@HEADERS@@ section. Output shows distinct 'Headers' and 'Body' sections. Tests: TestMessagesShowHeaders (2 functions, all pass)."
+    },
+    {
+      "id": "C-066",
+      "result": "PASS",
+      "evidence": "'--raw' outputs HTML body as-is (<html>, <h1>Hello</h1>). Default output includes From:, Subject: metadata. Raw output starts with <html> — body only, no Rich formatting. Tests: TestMessagesShowRaw (2 functions, all pass)."
+    },
+    {
+      "id": "C-067",
+      "result": "PASS",
+      "evidence": "'--json' produces valid JSON dict with all fields: id, date, from, to, cc, bcc, subject, body, attachments, read, flagged. Attachments is a list of {name, size, mime_type} objects, length 2. Tests: TestMessagesShowJSON (3 functions, all pass)."
+    },
+    {
+      "id": "C-068",
+      "result": "PASS",
+      "evidence": "message_id is a typer.Argument(...), positional. 'messages show 12345' works (exit 0), script contains '12345'. 'messages show' without ID produces usage error (exit code != 0). Help shows 'MESSAGE_ID'. Tests: TestMessagesShowPositionalArg (3 functions, all pass)."
+    },
+    {
+      "id": "C-069",
+      "result": "PASS",
+      "evidence": "'messages show 999999' with mock error returns non-zero exit code. Error output contains relevant info. Tests: TestMessagesShowNotFound (2 functions, all pass)."
+    },
+    {
+      "id": "C-070",
+      "result": "PASS",
+      "evidence": "'messages list' with mock error 'application isn't running' returns non-zero exit code. Error output mentions 'Mail'. Tests: TestMessagesListMailNotRunning (2 functions, all pass)."
+    },
+    {
+      "id": "C-071",
+      "result": "PASS",
+      "evidence": "Success output ('Hello World') on stdout. Error output on stderr. Show command data on stdout. Follows Sprint 2 pattern via shared render_output() and handle_mail_error(). Tests: TestMessagesStreamSeparation (3 functions, all pass)."
+    },
+    {
+      "id": "C-072",
+      "result": "PASS",
+      "evidence": "35 test functions for messages list covering: success (3), table columns (2), default mailbox (3), account (2), unread (2), from (3), subject (2), date (5), limit (3), sorting (1), JSON (4), batch (3), combined (2). All 35 pass. Threshold was >=10."
+    },
+    {
+      "id": "C-073",
+      "result": "PASS",
+      "evidence": "22 test functions for messages show covering: full display (7), attachments (3), headers (2), raw (2), JSON (3), positional arg (3), not-found error (2). All 22 pass. Threshold was >=6."
+    },
+    {
+      "id": "C-074",
+      "result": "PASS",
+      "evidence": "pytest -v from project root: 174 passed in 0.18s. Zero failures, zero errors. Includes Sprint 1 engine tests (26 pass), Sprint 2 accounts (28) and mailboxes (24), Sprint 3 messages (81), and CLI tests (10)."
+    },
+    {
+      "id": "C-075",
+      "result": "PASS",
+      "evidence": "Messages module at src/mailctl/commands/messages.py (572 lines). Architecture: build_messages_list_script() + build_message_show_script() for AppleScript generation; parse_messages_list_output() + parse_message_show_output() for parsing; fetch_messages() + fetch_message() for orchestration; register() for Typer commands. Uses shared render_output() and handle_mail_error() from output module. Follows accounts/mailboxes pattern exactly."
+    },
+    {
+      "id": "C-076",
+      "result": "PASS",
+      "evidence": "CLI execution: 'mailctl --version' prints 'mailctl 0.1.0' and exits 0. 'mailctl --help' lists 'accounts', 'mailboxes', and 'messages' as command groups. All Sprint 1 and Sprint 2 unit tests still pass (78 tests)."
+    },
+    {
+      "id": "C-077",
+      "result": "PASS",
+      "evidence": "'--unread --from alice --limit 5 --json' with mixed data returns 2 messages (unread AND alice). '--limit 1' variant returns 1 message. All filters applied conjunctively via _apply_filters(). Tests: TestMessagesListCombinedFilters (2 functions, all pass)."
+    },
+    {
+      "id": "C-078",
+      "result": "PASS",
+      "evidence": "'messages --help' lists 'list' and 'show' subcommands. 'messages list --help' describes all 9 options: --mailbox, --account, --unread, --from, --subject, --since, --before, --limit, --json. 'messages show --help' describes MESSAGE_ID argument, --headers, --raw, --json. Tests: TestMessagesHelp (3 functions, all pass)."
+    }
+  ],
+  "regressionResults": {
+    "sprint1": "PASS — All 26 Sprint 1 tests pass (engine execution, multi-statement, error categories, timeout, parsing, CLI skeleton). 'mailctl --version' prints version and exits 0.",
+    "sprint2": "PASS — All 52 Sprint 2 tests pass (accounts list, mailboxes list, output system, JSON, errors, batch calls, help text). 'mailctl --help' shows accounts, mailboxes, messages."
+  },
+  "holistic": {
+    "functionality": {
+      "score": 9,
+      "notes": "All 28 criteria pass. Messages list supports 6 filter options, date sorting, default limit, batch fetching. Messages show displays all fields, attachments, headers, raw body, JSON. Clean error handling for missing messages and Mail.app not running."
+    },
+    "codeQuality": {
+      "score": 9,
+      "notes": "Clean layered architecture: script generation → parsing → fetching → Typer commands. Messages module (572 lines) follows the same pattern as accounts/mailboxes. Uses shared output and error modules. Good use of dataclasses for column definitions. Type hints throughout."
+    },
+    "testing": {
+      "score": 9,
+      "notes": "81 test functions for messages (35 list, 22 show, plus error/help/parsing). Comprehensive filter coverage including edge cases (combined filters, case sensitivity, date boundaries). Full suite: 174 tests in 0.18s. Reusable OsascriptMock fixture."
+    },
+    "cliUx": {
+      "score": 9,
+      "notes": "Excellent help text for all commands. Options use intuitive short flags (-m, -a, -u, -f, -s, -l). MESSAGE_ID is a required positional argument. Default INBOX and default limit of 25 are sensible. Rich table with truncation for display. JSON mode available everywhere."
+    },
+    "errorHandling": {
+      "score": 9,
+      "notes": "Graceful errors for Mail.app not running, message not found. Errors on stderr, data on stdout. Non-zero exit codes on failure. Uses shared handle_mail_error() for consistency. Date parsing is forgiving — unparseable dates included by default rather than crashing."
+    },
+    "documentation": {
+      "score": 8,
+      "notes": "Module-level docstring explains architecture and function roles. All public functions have docstrings. Help text describes every option. Slightly lower because inline comments are sparse in some functions (e.g., _apply_filters, _sort_by_date_descending)."
+    }
+  },
+  "summary": "Sprint 3 (Message Listing & Show) is a clean PASS. All 28 criteria met. 174 tests pass with zero failures in 0.18s. The messages module follows the established architecture pattern with well-separated script generation, parsing, fetching, and command registration layers. Filter system supports 6 options that compose conjunctively. Messages are sorted newest-first with sensible defaults (INBOX, limit 25). Show command displays full message with attachments metadata, optional headers, raw body, and JSON output. Sprint 1 and Sprint 2 functionality fully preserved (regression pass)."
+}
