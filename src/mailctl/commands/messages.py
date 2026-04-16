@@ -753,23 +753,6 @@ def register(messages_app: typer.Typer) -> None:
         json_mode = json_output or ctx.obj.get("json", False)
         no_color = ctx.obj.get("no_color", False)
 
-        # -- Validate account if specified --------------------------------
-        if account is not None:
-            try:
-                known = parse_account_names_output(
-                    run_applescript(build_account_names_script())
-                )
-            except AppleScriptError as exc:
-                handle_mail_error(exc, no_color=no_color)
-                return  # unreachable
-            if account not in known:
-                render_error(
-                    f'Account "{account}" not found. '
-                    f"Known accounts: {', '.join(known) or '(none)'}.",
-                    no_color=no_color,
-                )
-                raise typer.Exit(code=EXIT_USAGE_ERROR)
-
         try:
             data = fetch_messages(
                 account=account,
@@ -783,6 +766,21 @@ def register(messages_app: typer.Typer) -> None:
             )
         except AppleScriptError as exc:
             exc_str = str(exc).lower()
+            # Account not found — fetch known accounts for the error message.
+            if account and ("account" in exc_str or "can't get" in exc_str):
+                try:
+                    known = parse_account_names_output(
+                        run_applescript(build_account_names_script())
+                    )
+                    render_error(
+                        f'Account "{account}" not found. '
+                        f"Known accounts: {', '.join(known) or '(none)'}.",
+                        no_color=no_color,
+                    )
+                    raise typer.Exit(code=EXIT_USAGE_ERROR)
+                except AppleScriptError:
+                    pass  # Fall through to generic handling
+            # Mailbox not found
             if "mailbox" in exc_str and ("not found" in exc_str or "can't get" in exc_str or "doesn't exist" in exc_str):
                 render_error(
                     f'Mailbox "{mailbox}" not found. '
