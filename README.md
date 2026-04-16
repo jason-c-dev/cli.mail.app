@@ -8,6 +8,15 @@ mailboxes. Writes (compose, reply, forward) go through AppleScript —
 Mail.app remains the authoritative writer, which means sync and server
 interaction behave exactly as they do in the GUI.
 
+It's also explicitly intended as an **Apple Mail.app CLI for agent
+harnesses that prefer local bash over MCP servers** — Claude Code,
+scripted pipelines, cron jobs, anything that can shell out. The
+draft-first safety model means a runaway script can fill your Drafts
+folder but can't send. For Claude Code specifically, see the bundled
+[`skills/mailctl/`](skills/mailctl/SKILL.md) — drop it into a project's
+`.claude/skills/` and Claude will pick up how to use `mailctl` without
+needing any context from this repo.
+
 A short sample of what that feels like:
 
 ```console
@@ -502,8 +511,28 @@ introduces a send-capable path must:
 - Default to "cancel" at confirmation prompts
 - Have corresponding unit tests asserting the bypass-resistance
 
-See `CLAUDE.md` at the repo root for the guardrails that apply to
-automated agents working on this codebase.
+### Two sets of instructions for Claude — which to use
+
+This repo ships two distinct Claude Code integration files. They serve
+different audiences:
+
+- **`CLAUDE.md`** (at the repo root) — **development-only**. These are
+  guardrails for Claude instances *working on* `mailctl` itself: the
+  planner, generator, and evaluator that built the tool, and anyone
+  using Claude to modify it. Its rules are about not sending real
+  email during development, preferring real-system integration tests
+  over mocks, etc. If you're a user of `mailctl`, ignore it.
+- **`skills/mailctl/SKILL.md`** — **for end-user Claude Code sessions**.
+  Copy the `skills/mailctl/` directory into a project's `.claude/skills/`
+  (or your user-level `~/.claude/skills/`) and Claude will load it on
+  demand when a user asks to read or send email. The skill documents
+  every command, the safety model, common workflows, and gotchas —
+  everything a fresh Claude instance needs to wield `mailctl`
+  competently, without needing this repo's source tree.
+
+Do not rely on `CLAUDE.md` as the Claude-Code integration for normal
+use — it's a scoped instruction set for modifying the tool, not for
+operating it.
 
 ## License
 
