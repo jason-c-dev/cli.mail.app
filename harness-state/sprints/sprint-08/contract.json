@@ -1,0 +1,423 @@
+{
+  "sprintNumber": 8,
+  "name": "Draft Editing & Delete",
+  "theme": "Complete the write story — edit drafts and delete messages.",
+  "features": ["Draft Editing (3.9)", "Delete (3.11)"],
+  "criteria": [
+    {
+      "id": "C-189",
+      "category": "drafts-edit-command",
+      "description": "'mailctl drafts edit <message-id>' command exists under a 'drafts' subcommand group, accepts a positional message-id argument, and succeeds (exit 0) when updating at least one property with mocked osascript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --subject \"New subject\"' via CliRunner with mock_osascript configured to return success",
+        "Verify exit code is 0",
+        "Verify mock_osascript was invoked with at least one call",
+        "Verify the generated AppleScript targets the draft by its message ID"
+      ],
+      "threshold": "Command succeeds with exit 0 and the generated AppleScript modifies the targeted draft"
+    },
+    {
+      "id": "C-190",
+      "category": "drafts-edit-subject",
+      "description": "'mailctl drafts edit <id> --subject \"New Subject\"' generates AppleScript that sets the subject of the draft to the new value",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --subject \"Updated meeting notes\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the subject property to 'Updated meeting notes'"
+      ],
+      "threshold": "Generated AppleScript sets the subject property to the specified value"
+    },
+    {
+      "id": "C-191",
+      "category": "drafts-edit-body",
+      "description": "'mailctl drafts edit <id> --body \"New body text\"' generates AppleScript that replaces the draft's body content",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --body \"Updated body content\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the content/body of the draft to 'Updated body content'"
+      ],
+      "threshold": "Generated AppleScript replaces the body content with the specified value"
+    },
+    {
+      "id": "C-192",
+      "category": "drafts-edit-body",
+      "description": "'mailctl drafts edit <id> --body-file <path>' reads the file content and uses it as the new body, replacing the draft's existing body",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Create a temporary file with body content 'Body from file'",
+        "Run 'mailctl drafts edit 12345 --body-file <tmpfile>' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the body to 'Body from file'"
+      ],
+      "threshold": "Body content read from file and used in the generated AppleScript"
+    },
+    {
+      "id": "C-193",
+      "category": "drafts-edit-body",
+      "description": "Providing both --body and --body-file to 'mailctl drafts edit' produces a usage error and non-zero exit code (mutually exclusive body sources)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --body \"text\" --body-file somefile.txt' via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify stderr or output mentions that --body and --body-file are mutually exclusive"
+      ],
+      "threshold": "Mutually exclusive body sources fail fast with a clear error"
+    },
+    {
+      "id": "C-194",
+      "category": "drafts-edit-recipients",
+      "description": "'mailctl drafts edit <id> --to <address>' replaces the draft's To recipients with the specified address(es). --to is repeatable for multiple recipients",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --to alice@example.com --to bob@example.com' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it clears existing To recipients and sets them to alice@example.com and bob@example.com"
+      ],
+      "threshold": "To recipients replaced with the specified addresses in the generated AppleScript"
+    },
+    {
+      "id": "C-195",
+      "category": "drafts-edit-recipients",
+      "description": "'mailctl drafts edit <id> --cc <address>' replaces CC recipients and '--bcc <address>' replaces BCC recipients, both repeatable",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --cc cc@example.com' via CliRunner with mock_osascript",
+        "Verify the generated AppleScript sets CC recipients to cc@example.com",
+        "Run 'mailctl drafts edit 12345 --bcc bcc@example.com' via CliRunner with mock_osascript",
+        "Verify the generated AppleScript sets BCC recipients to bcc@example.com"
+      ],
+      "threshold": "CC and BCC recipients correctly replaced in generated AppleScript"
+    },
+    {
+      "id": "C-196",
+      "category": "drafts-edit-recipients",
+      "description": "'--add-to <address>' adds a recipient to the existing To list without removing current recipients. '--remove-to <address>' removes a specific recipient from the To list",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --add-to new@example.com' via CliRunner with mock_osascript",
+        "Verify exit code is 0 and the generated AppleScript creates a new to recipient without first clearing existing recipients",
+        "Run 'mailctl drafts edit 12345 --remove-to old@example.com' via CliRunner with mock_osascript",
+        "Verify exit code is 0 and the generated AppleScript removes the recipient with address old@example.com"
+      ],
+      "threshold": "--add-to appends without clearing, --remove-to removes a specific recipient"
+    },
+    {
+      "id": "C-197",
+      "category": "drafts-edit-validation",
+      "description": "'--to' and '--add-to' are mutually exclusive — combining them in one invocation produces a usage error (--to replaces ALL, --add-to adds incrementally; mixing is ambiguous)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --to alice@example.com --add-to bob@example.com' via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify error message explains that --to and --add-to cannot be combined"
+      ],
+      "threshold": "Mutually exclusive --to and --add-to fail fast with a clear error"
+    },
+    {
+      "id": "C-198",
+      "category": "drafts-edit-attachments",
+      "description": "'mailctl drafts edit <id> --attach <path>' adds an attachment to the draft. Path is validated for existence before generating AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Create a temporary file at a known path",
+        "Run 'mailctl drafts edit 12345 --attach <tmpfile>' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it adds the attachment using the file path",
+        "Run with a non-existent file path and verify exit code is non-zero with an error about the file not being found"
+      ],
+      "threshold": "Attachment added in AppleScript; non-existent path fails with a clear error before any AppleScript runs"
+    },
+    {
+      "id": "C-199",
+      "category": "drafts-edit-attachments",
+      "description": "'mailctl drafts edit <id> --remove-attach <filename>' generates AppleScript that removes the named attachment from the draft",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --remove-attach \"report.pdf\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it targets the attachment named 'report.pdf' for removal"
+      ],
+      "threshold": "Generated AppleScript removes the specified attachment by name"
+    },
+    {
+      "id": "C-200",
+      "category": "drafts-edit-combined",
+      "description": "Multiple edit options can be combined in a single invocation: '--subject \"New\" --body \"Updated\" --add-to extra@example.com' applies all changes in one AppleScript call",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --subject \"New Subject\" --body \"New body\" --add-to extra@example.com' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it sets the subject, replaces the body, AND adds the recipient",
+        "Verify only one osascript call was made (batched)"
+      ],
+      "threshold": "All changes applied in a single batched AppleScript invocation"
+    },
+    {
+      "id": "C-201",
+      "category": "drafts-edit-validation",
+      "description": "'mailctl drafts edit <id>' with no edit options (no --subject, --body, --to, etc.) produces a usage error telling the user to specify at least one change",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345' (no edit options) via CliRunner",
+        "Verify exit code is non-zero",
+        "Verify stderr or output mentions that at least one edit option is required"
+      ],
+      "threshold": "No-options invocation fails with a clear error directing the user to specify a change"
+    },
+    {
+      "id": "C-202",
+      "category": "drafts-edit-dryrun",
+      "description": "'--dry-run' on 'mailctl drafts edit' prints what WOULD be changed (message ID, which fields) without executing any AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --subject \"New\" --body \"Updated\" --dry-run' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Verify stdout describes the intended changes (message ID, subject change, body change)",
+        "Verify mock_osascript was NOT called (zero osascript invocations)"
+      ],
+      "threshold": "--dry-run prints the planned changes and executes zero osascript calls"
+    },
+    {
+      "id": "C-203",
+      "category": "drafts-edit-output",
+      "description": "'--json' on 'mailctl drafts edit' emits structured JSON with at least: action ('edited'), message_id, and the fields that were changed",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl drafts edit 12345 --subject \"New Subject\" --json' via CliRunner with mock_osascript",
+        "Parse stdout as JSON",
+        "Verify it is a valid JSON object with keys: action (value 'edited'), message_id, and a representation of changes applied (e.g., subject field)"
+      ],
+      "threshold": "Valid JSON with required fields emitted for draft edit"
+    },
+    {
+      "id": "C-204",
+      "category": "delete-command",
+      "description": "'mailctl messages delete <message-id>' command exists as a subcommand of 'messages', moves the message to Trash by default (non-destructive), and succeeds (exit 0) with mocked osascript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345' via CliRunner with mock_osascript configured to return success",
+        "Verify exit code is 0",
+        "Verify mock_osascript was invoked with at least one call",
+        "Inspect the generated AppleScript and verify it moves the message to the Trash mailbox (NOT permanent deletion)"
+      ],
+      "threshold": "Default delete moves to Trash; generated AppleScript performs a move, not a permanent delete"
+    },
+    {
+      "id": "C-205",
+      "category": "delete-permanent",
+      "description": "'mailctl messages delete <id> --permanent' generates AppleScript that permanently deletes the message. Without --yes, the command prompts for confirmation (y/N default N)",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345 --permanent' via CliRunner with input 'y' and mock_osascript",
+        "Verify exit code is 0 when user confirms",
+        "Inspect the generated AppleScript and verify it permanently deletes the message (uses 'delete' verb, not move to Trash)",
+        "Run 'mailctl messages delete 12345 --permanent' via CliRunner with input 'n' (or empty input for default N)",
+        "Verify exit code is 0 (aborted gracefully) and mock_osascript was NOT called"
+      ],
+      "threshold": "--permanent deletes permanently on confirmation; aborts without AppleScript on rejection; defaults to N"
+    },
+    {
+      "id": "C-206",
+      "category": "delete-permanent",
+      "description": "'mailctl messages delete <id> --permanent --yes' skips the confirmation prompt and proceeds directly to permanent deletion",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345 --permanent --yes' via CliRunner with mock_osascript (no stdin input)",
+        "Verify exit code is 0",
+        "Verify mock_osascript was invoked",
+        "Verify no confirmation prompt was printed to stdout"
+      ],
+      "threshold": "--yes with --permanent skips the prompt and executes the permanent deletion"
+    },
+    {
+      "id": "C-207",
+      "category": "delete-permanent",
+      "description": "'--yes' without '--permanent' has no effect — default delete (move to Trash) does not require or show a confirmation prompt",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345 --yes' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Verify the operation moved to Trash (not permanent delete)",
+        "Verify no confirmation prompt was shown"
+      ],
+      "threshold": "--yes alone does not change delete behaviour (still moves to Trash, no prompt)"
+    },
+    {
+      "id": "C-208",
+      "category": "delete-bulk",
+      "description": "'mailctl messages delete' accepts multiple message IDs and processes all of them in a batched AppleScript call",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 100 200 300' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify all three message IDs (100, 200, 300) are referenced",
+        "Verify the operation is batched into a minimal number of osascript calls (ideally one)"
+      ],
+      "threshold": "Multiple IDs accepted and all processed; batched into one osascript call"
+    },
+    {
+      "id": "C-209",
+      "category": "delete-account",
+      "description": "'mailctl messages delete <id> --account <name>' scopes the delete AppleScript to the specified account",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345 --account \"Work\"' via CliRunner with mock_osascript",
+        "Verify exit code is 0",
+        "Inspect the generated AppleScript and verify it references account \"Work\" when locating the message to delete"
+      ],
+      "threshold": "AppleScript scoped to the specified account when --account is provided"
+    },
+    {
+      "id": "C-210",
+      "category": "delete-dryrun",
+      "description": "'--dry-run' on 'mailctl messages delete' prints what WOULD be deleted (message IDs, Trash vs permanent) without executing any AppleScript",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345 --dry-run' via CliRunner with mock_osascript",
+        "Verify exit code is 0 and stdout describes moving message 12345 to Trash",
+        "Verify mock_osascript was NOT called",
+        "Run 'mailctl messages delete 12345 --permanent --dry-run' via CliRunner",
+        "Verify stdout describes permanently deleting message 12345",
+        "Verify mock_osascript was NOT called"
+      ],
+      "threshold": "--dry-run prints the planned deletion (including Trash vs permanent) and executes zero osascript calls"
+    },
+    {
+      "id": "C-211",
+      "category": "delete-output",
+      "description": "Delete produces human-readable confirmation output on success and '--json' emits structured JSON with action ('deleted' or 'trashed'), message_ids, and permanent flag",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Run 'mailctl messages delete 12345' and verify stdout contains confirmation mentioning the message was moved to Trash",
+        "Run 'mailctl messages delete 12345 --json' with mock_osascript",
+        "Parse stdout as JSON and verify it is an object with keys: action ('trashed'), message_ids (list), permanent (false)",
+        "Run 'mailctl messages delete 12345 --permanent --yes --json' with mock_osascript",
+        "Parse stdout as JSON and verify action is 'deleted' and permanent is true"
+      ],
+      "threshold": "Human-readable confirmation and valid JSON with required fields for both Trash and permanent delete"
+    },
+    {
+      "id": "C-212",
+      "category": "error-handling",
+      "description": "Delete and drafts edit with a nonexistent message ID (simulated via mock error) produce clear errors mentioning the message was not found, with non-zero exit code",
+      "testMethod": "unit-test",
+      "testSteps": [
+        "Configure mock_osascript to simulate a script error when processing message ID 99999",
+        "Run 'mailctl messages delete 99999'",
+        "Verify exit code is non-zero and stderr mentions the error",
+        "Run 'mailctl drafts edit 99999 --subject \"Test\"'",
+        "Verify exit code is non-zero and stderr mentions the error"
+      ],
+      "threshold": "Nonexistent message ID produces non-zero exit and actionable error on stderr for both commands"
+    },
+    {
+      "id": "C-213",
+      "category": "cli-help",
+      "description": "'mailctl drafts --help' lists 'edit' as a subcommand, and 'mailctl drafts edit --help' describes the positional MESSAGE_ID argument and all options (--subject, --body, --body-file, --to, --cc, --bcc, --add-to, --remove-to, --attach, --remove-attach, --dry-run, --json)",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl drafts --help' via CliRunner and verify 'edit' is listed as a subcommand",
+        "Run 'mailctl drafts edit --help' via CliRunner",
+        "Verify help mentions: MESSAGE_ID (positional), --subject, --body, --body-file, --to, --cc, --bcc, --add-to, --remove-to, --attach, --remove-attach, --dry-run, --json"
+      ],
+      "threshold": "'drafts' group visible with 'edit' subcommand; all options documented in help"
+    },
+    {
+      "id": "C-214",
+      "category": "cli-help",
+      "description": "'mailctl messages --help' lists 'delete' as a subcommand alongside existing 'list', 'show', 'search', 'mark', 'move'. 'mailctl messages delete --help' describes MESSAGE_IDS, --permanent, --yes, --account, --dry-run, --json",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl messages --help' via CliRunner",
+        "Verify 'delete' is listed alongside 'list', 'show', 'search', 'mark', 'move'",
+        "Run 'mailctl messages delete --help' via CliRunner",
+        "Verify help mentions: MESSAGE_IDS (positional, multiple), --permanent, --yes, --account, --dry-run, --json"
+      ],
+      "threshold": "'delete' visible in messages help alongside all prior subcommands; all options documented"
+    },
+    {
+      "id": "C-215",
+      "category": "architecture",
+      "description": "Draft edit and delete implementations follow the established build/perform/register pattern: AppleScript in build_*_script() functions, thin Typer handlers, shared output/error-handling utilities reused from prior sprints",
+      "testMethod": "code-inspection",
+      "testSteps": [
+        "Inspect the draft edit implementation and verify build_*_script() functions construct the AppleScript",
+        "Inspect the delete implementation and verify build_*_script() functions construct the AppleScript",
+        "Verify command handlers use handle_mail_error from mailctl.output for error handling",
+        "Verify render_output or render_error is used for output, not ad-hoc print statements for structured data",
+        "Verify the code reuses existing patterns (e.g. _escape_applescript_string for string escaping, run_applescript from engine)"
+      ],
+      "threshold": "Both features follow the established architecture with code reuse from prior sprints"
+    },
+    {
+      "id": "C-216",
+      "category": "testing",
+      "description": "Comprehensive unit tests exist for draft editing covering: --subject, --body, --body-file, mutually-exclusive body sources, --to, --cc, --bcc, --add-to, --remove-to, --to/--add-to conflict, --attach, --remove-attach, combined changes, no-options error, --dry-run, --json, error handling",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect tests/unit/ for draft edit test file(s)",
+        "Verify tests cover at minimum: --subject, --body, --body-file, body conflict error, --to (replace), --cc, --bcc, --add-to, --remove-to, --to + --add-to conflict, --attach, --remove-attach, combined changes, no-options error, --dry-run, --json, AppleScript error handling",
+        "Run the draft edit tests and verify they all pass"
+      ],
+      "threshold": "At least 16 draft edit test cases covering the above scenarios, all passing"
+    },
+    {
+      "id": "C-217",
+      "category": "testing",
+      "description": "Comprehensive unit tests exist for delete covering: single ID to Trash, --permanent with confirmation yes, --permanent with confirmation no (abort), --permanent --yes (skip prompt), --yes without --permanent, bulk IDs, --account scoping, --dry-run (Trash and permanent), --json (Trash and permanent), error handling",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Inspect tests/unit/ for delete test file(s)",
+        "Verify tests cover at minimum: default Trash, --permanent + y, --permanent + n, --permanent --yes, --yes alone, bulk 3+ IDs, --account, --dry-run default, --dry-run --permanent, --json Trash, --json permanent, AppleScript error handling",
+        "Run the delete tests and verify they all pass"
+      ],
+      "threshold": "At least 12 delete test cases covering the above scenarios, all passing"
+    },
+    {
+      "id": "C-218",
+      "category": "testing",
+      "description": "Full test suite (pytest from project root) passes with zero failures, including all Sprint 1-7 tests and new Sprint 8 tests",
+      "testMethod": "test-execution",
+      "testSteps": [
+        "Run 'pytest -v' from the project root",
+        "Verify all tests pass (0 failures, 0 errors)",
+        "Verify Sprint 1-7 tests still pass (regression)"
+      ],
+      "threshold": "All tests pass, exit code 0"
+    },
+    {
+      "id": "C-219",
+      "category": "regression",
+      "description": "All Sprint 1-7 commands still work: '--version', accounts list, mailboxes list, messages list/show/search/mark/move, compose, reply, forward — with unchanged options and outputs",
+      "testMethod": "cli-execution",
+      "testSteps": [
+        "Run 'mailctl --version' and verify version output",
+        "Run 'mailctl --help' and verify all command groups are listed including accounts, mailboxes, messages, compose, reply, forward, and the new drafts group",
+        "Run the full Sprint 1-7 unit test suite and verify all tests pass"
+      ],
+      "threshold": "All Sprint 1-7 functionality preserved; no test regressions"
+    }
+  ],
+  "outOfScope": [
+    "Sending from drafts edit — editing a draft does not send it. The user must separately run 'mailctl compose' or use the draft-first workflow; there is no --dangerously-send on the edit command",
+    "Draft listing — listing all drafts in the Drafts mailbox is already possible via 'mailctl messages list --mailbox Drafts'; no dedicated 'mailctl drafts list' command in this sprint",
+    "Draft creation via 'mailctl drafts' — draft creation is handled by 'mailctl compose' (Sprint 5); this sprint only adds edit",
+    "Undo/revert for delete — no mechanism to undo a delete or restore from Trash in v1",
+    "Delete across accounts — deleting a message by ID without --account when the ID is ambiguous across accounts is not handled; user must specify --account",
+    "Permanent delete of multiple messages with per-message confirmation — bulk --permanent uses a single confirmation for the entire batch, not one per message",
+    "Doctor command (Sprint 9)",
+    "Shell completions (Sprint 10)",
+    "Integration tests against real Mail.app (Sprint 10)"
+  ],
+  "regressionSprints": [1, 2, 3, 4, 5, 6, 7],
+  "safetyNotes": {
+    "noSendInEdit": "The 'mailctl drafts edit' command MUST NOT include a send path. There is no --dangerously-send option on the edit command. Editing a draft only modifies its content; it never sends. If the generated AppleScript contains a 'send' verb, that is a bug.",
+    "deleteIsMoveByDefault": "Default delete moves to Trash, which is non-destructive and reversible. Only --permanent actually deletes. This makes delete safe in automation pipelines.",
+    "permanentDeleteConfirmation": "The --permanent flag requires interactive confirmation (y/N, default N) unless --yes is also provided. This matches the safety pattern from compose's --dangerously-send confirmation.",
+    "evalTestingSafety": "The evaluator MAY run 'mailctl messages delete' against real Mail.app ONLY to move messages to Trash (never --permanent). The evaluator MUST restore moved messages after testing. Per CLAUDE.md, the evaluator MUST NOT permanently delete messages from the user's real accounts.",
+    "noRealDeletion": "Under no circumstances should the evaluator or generator invoke 'mailctl messages delete --permanent' against real Mail.app. All permanent delete testing MUST use mocked osascript."
+  }
+}

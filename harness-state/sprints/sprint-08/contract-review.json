@@ -1,0 +1,57 @@
+{
+  "sprintNumber": 8,
+  "decision": "accepted",
+  "reviewDate": "2026-04-15",
+  "criteriaCount": 31,
+  "featureCoverage": {
+    "draftEditing": {
+      "status": "comprehensive",
+      "criteriaIds": ["C-189", "C-190", "C-191", "C-192", "C-193", "C-194", "C-195", "C-196", "C-197", "C-198", "C-199", "C-200", "C-201", "C-202", "C-203"],
+      "notes": "15 criteria covering the full option surface: subject, body, body-file, mutual exclusion, to/cc/bcc replace, add-to/remove-to incremental, add-to/to conflict, attach/remove-attach, combined changes, no-options validation, dry-run, and JSON output. All testable via CliRunner + mock_osascript."
+    },
+    "delete": {
+      "status": "comprehensive",
+      "criteriaIds": ["C-204", "C-205", "C-206", "C-207", "C-208", "C-209", "C-210", "C-211"],
+      "notes": "8 criteria covering default-to-Trash, permanent with confirmation, --yes bypass, --yes without --permanent edge case, bulk IDs, --account scoping, dry-run, and human + JSON output. Good safety coverage."
+    },
+    "crossCutting": {
+      "status": "adequate",
+      "criteriaIds": ["C-212", "C-213", "C-214", "C-215", "C-216", "C-217", "C-218", "C-219"],
+      "notes": "8 criteria for error handling, CLI help for both commands, architecture adherence, comprehensive test coverage requirements, full test suite pass, and Sprint 1-7 regression."
+    }
+  },
+  "observations": [
+    {
+      "severity": "minor",
+      "description": "Product spec 3.9 lists stdin as a body source ('--body <text> / --body-file <path> / stdin: replace body'), but no criterion tests stdin body input for drafts edit. The sprint plan scope doesn't explicitly list stdin either, so this is consistent with scoping — but worth noting for completeness. Could be deferred to Sprint 10 polish or added as a low-priority criterion.",
+      "recommendation": "Acceptable to ship without — stdin support for compose is tested in Sprint 5 and the same codepath would likely be reused. If the generator implements it, the combined-changes test (C-200) is the natural place to verify."
+    },
+    {
+      "severity": "info",
+      "description": "Sprint 5 is missing from regression/registry.json (sprints 1, 2, 3, 4, 6, 7 are present but not 5). The contract correctly lists regressionSprints: [1,2,3,4,5,6,7], and C-218 ('pytest -v' passes all tests) and C-219 (all Sprint 1-7 commands work) provide effective regression coverage for Sprint 5's compose and safety model. This is adequate.",
+      "recommendation": "No action needed. The evaluator should verify compose/reply/forward tests pass as part of C-218."
+    },
+    {
+      "severity": "info",
+      "description": "C-196 tests --add-to and --remove-to but there are no corresponding --add-cc/--remove-cc or --add-bcc/--remove-bcc options. This is consistent with the product spec which only mentions incremental add/remove for the To field. Flagging for awareness — this is by design, not a gap.",
+      "recommendation": "No action needed."
+    }
+  ],
+  "safetyReview": {
+    "status": "excellent",
+    "notes": "The safety notes are thorough and well-aligned with CLAUDE.md guardrails. Key points: (1) no --dangerously-send on the edit command, (2) delete defaults to Trash, (3) --permanent requires confirmation, (4) all permanent delete testing via mocked osascript only, (5) evaluator forbidden from running --permanent against real Mail.app. The out-of-scope list explicitly excludes sending from drafts edit, which is correct."
+  },
+  "testabilityAssessment": {
+    "status": "strong",
+    "notes": "All 31 criteria specify exact CLI commands, expected behaviors, and verification checks. Test methods are appropriate: unit-test with mock_osascript for AppleScript-touching paths, cli-execution for help text, code-inspection for architecture, test-execution for test suite coverage. Thresholds are binary and unambiguous."
+  },
+  "regressionCoverage": {
+    "status": "correct",
+    "sprints": [1, 2, 3, 4, 5, 6, 7],
+    "notes": "All completed sprints listed. C-218 and C-219 provide comprehensive regression via full test suite execution and explicit verification of all prior commands."
+  },
+  "outOfScopeReview": {
+    "status": "well-defined",
+    "notes": "Six out-of-scope items are clearly stated and reasonable. Notably: no send from edit, no dedicated drafts list (already available via messages list --mailbox Drafts), no undo/revert for delete, no ambiguous cross-account delete resolution. These are sensible scope boundaries for Sprint 8."
+  }
+}
