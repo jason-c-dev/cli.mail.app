@@ -120,6 +120,7 @@ def build_compose_script(
     from_account: str | None = None,
     attachments: list[str] | None = None,
     include_send: bool = False,
+    show_window: bool = False,
 ) -> str:
     """Return AppleScript that creates a new outgoing Mail.app message.
 
@@ -130,11 +131,15 @@ def build_compose_script(
     literal ``--dangerously-send`` CLI flag has been supplied.
 
     When *include_send* is ``False``, the script finishes by saving the
-    message as a draft (Mail.app's ``make new outgoing message`` with
-    ``visible:true`` leaves the draft in the Drafts folder, but we add an
-    explicit ``save`` call for belt-and-braces safety so the draft is
-    persisted even without the Mail.app compose window being brought to
-    the foreground).
+    message as a draft. An explicit ``save newMessage`` call persists the
+    draft to the Drafts folder regardless of the visibility setting.
+
+    *show_window* controls whether Mail.app brings the compose window to
+    the foreground. Default is ``False`` (``visible:false``) so the CLI
+    stays silent — the draft is still saved and visible in
+    ``mailctl drafts list`` and Mail.app's Drafts folder on any
+    synced device, just without a popup. Pass ``show_window=True`` /
+    ``--show`` from the CLI to restore the GUI preview.
 
     Output format (on success, the script prints a single line containing
     the message id, which the caller parses).
@@ -235,7 +240,8 @@ def build_compose_script(
         preamble = ""
         set_sender_line = "-- no explicit sender account"
 
-    make_props = f'{{subject:{subj}, content:{body_expr}, visible:true}}'
+    visible_value = "true" if show_window else "false"
+    make_props = f'{{subject:{subj}, content:{body_expr}, visible:{visible_value}}}'
 
     script = f'''\
 tell application "Mail"
@@ -403,6 +409,7 @@ def perform_compose(
     from_account: str | None,
     attachments: list[str],
     dangerously_send: bool,
+    show_window: bool = False,
 ) -> dict[str, Any]:
     """Execute the compose AppleScript and return a structured result dict.
 
@@ -430,6 +437,7 @@ def perform_compose(
         from_account=from_account,
         attachments=attachments,
         include_send=dangerously_send,
+        show_window=show_window,
     )
     raw = run_applescript(script)
     applescript_id = raw.strip().strip('"')
@@ -577,6 +585,17 @@ def register(app: typer.Typer) -> None:
                 "nothing dangerous."
             ),
         ),
+        show: bool = typer.Option(
+            False,
+            "--show",
+            help=(
+                "Bring Mail.app's compose window to the foreground when the "
+                "draft is created. Default is silent — the draft is saved to "
+                "the Drafts folder (visible in `mailctl drafts list` and any "
+                "synced device) but no popup is shown. No effect when "
+                "--dangerously-send is also set."
+            ),
+        ),
         dry_run: bool = typer.Option(
             False,
             "--dry-run",
@@ -689,6 +708,7 @@ def register(app: typer.Typer) -> None:
                 from_account=resolved_account,
                 attachments=attach_list,
                 dangerously_send=dangerously_send,
+                show_window=show,
             )
         except AppleScriptError as exc:
             handle_mail_error(exc, no_color=no_color)

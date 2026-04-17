@@ -208,6 +208,7 @@ def build_reply_script(
     body: str,
     attachments: list[str] | None = None,
     include_send: bool = False,
+    show_window: bool = False,
 ) -> str:
     """Return AppleScript that creates a reply to the original message.
 
@@ -256,10 +257,15 @@ def build_reply_script(
 
     acct = _escape_applescript_string(account)
     mbox = _escape_applescript_string(mailbox)
+    # `with opening window` pops the Mail.app compose GUI. Default is
+    # silent — the draft still saves to Drafts — so agent-driven use
+    # doesn't spam the user with windows. `--show` on the Typer handler
+    # flips this back on.
+    window_clause = " with opening window" if show_window else ""
     script = f'''\
 tell application "Mail"
     set originalMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}
-    set replyMsg to reply originalMsg with opening window
+    set replyMsg to reply originalMsg{window_clause}
     tell replyMsg
         set subject to {subj}
         set content to {body_expr}
@@ -287,6 +293,7 @@ def build_forward_script(
     body: str,
     attachments: list[str] | None = None,
     include_send: bool = False,
+    show_window: bool = False,
 ) -> str:
     """Return AppleScript that creates a forward of the original message.
 
@@ -330,10 +337,13 @@ def build_forward_script(
 
     acct = _escape_applescript_string(account)
     mbox = _escape_applescript_string(mailbox)
+    # `with opening window` pops the Mail.app compose GUI. Off by
+    # default; `--show` on the Typer handler flips it on.
+    window_clause = " with opening window" if show_window else ""
     script = f'''\
 tell application "Mail"
     set originalMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}
-    set fwdMsg to forward originalMsg with opening window
+    set fwdMsg to forward originalMsg{window_clause}
     tell fwdMsg
         set subject to {subj}
         set content to {body_expr}
@@ -434,6 +444,7 @@ def perform_reply(
     body: str,
     attachments: list[str],
     dangerously_send: bool,
+    show_window: bool = False,
 ) -> dict[str, Any]:
     """Execute the reply AppleScript and return a structured result dict.
 
@@ -451,6 +462,7 @@ def perform_reply(
         body=body,
         attachments=attachments,
         include_send=dangerously_send,
+        show_window=show_window,
     )
     raw = run_applescript(script)
     reply_id = raw.strip().strip('"')
@@ -480,6 +492,7 @@ def perform_forward(
     body: str,
     attachments: list[str],
     dangerously_send: bool,
+    show_window: bool = False,
 ) -> dict[str, Any]:
     """Execute the forward AppleScript and return a structured result dict.
 
@@ -496,6 +509,7 @@ def perform_forward(
         body=body,
         attachments=attachments,
         include_send=dangerously_send,
+        show_window=show_window,
     )
     raw = run_applescript(script)
     fwd_id = raw.strip().strip('"')
@@ -704,6 +718,16 @@ def register(app: typer.Typer) -> None:
                 "nothing dangerous."
             ),
         ),
+        show: bool = typer.Option(
+            False,
+            "--show",
+            help=(
+                "Bring Mail.app's reply compose window to the foreground. "
+                "Default is silent — the draft is saved to the Drafts "
+                "folder (visible in `mailctl drafts list` and any synced "
+                "device) but no popup is shown."
+            ),
+        ),
         dry_run: bool = typer.Option(
             False,
             "--dry-run",
@@ -856,6 +880,7 @@ def register(app: typer.Typer) -> None:
                 body=full_body,
                 attachments=attach_list,
                 dangerously_send=dangerously_send,
+                show_window=show,
             )
         except AppleScriptError as exc:
             handle_mail_error(exc, no_color=no_color)
@@ -924,6 +949,16 @@ def register(app: typer.Typer) -> None:
                 "Skip the interactive confirmation prompt. Only meaningful "
                 "in combination with --dangerously-send; on its own it does "
                 "nothing dangerous."
+            ),
+        ),
+        show: bool = typer.Option(
+            False,
+            "--show",
+            help=(
+                "Bring Mail.app's forward compose window to the foreground. "
+                "Default is silent — the draft is saved to the Drafts "
+                "folder (visible in `mailctl drafts list` and any synced "
+                "device) but no popup is shown."
             ),
         ),
         dry_run: bool = typer.Option(
@@ -1045,6 +1080,7 @@ def register(app: typer.Typer) -> None:
                 body=full_body,
                 attachments=attach_list,
                 dangerously_send=dangerously_send,
+                show_window=show,
             )
         except AppleScriptError as exc:
             handle_mail_error(exc, no_color=no_color)

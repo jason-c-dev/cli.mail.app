@@ -136,10 +136,18 @@ mailctl compose --to a@x.y --to b@x.y --cc c@x.y \
 
 # From a specific account (use the account `name` from `accounts list`)
 mailctl compose --to X --subject S --body B --from Personal
+
+# Show Mail.app's compose window (off by default — drafts save silently)
+mailctl compose --to X --subject S --body B --show
 ```
 
 `compose` prints the draft's canonical id. Relay it to the user and
 ask whether to send. The id is also in `mailctl drafts list`.
+
+**Silent by default.** `compose`/`reply`/`forward` save the draft
+without popping Mail.app's compose window. The draft is in the Drafts
+folder on macOS AND on any synced device (iPhone, iCloud Mail, etc.).
+Pass `--show` if the user wants the GUI preview on macOS.
 
 ### Dry run (rehearsal; never touches Mail.app)
 
@@ -171,12 +179,13 @@ mailctl reply <id> --body "Thanks"              # draft
 mailctl reply <id> --all --body "Thanks all"    # reply-all draft
 mailctl forward <id> --to X --body "FYI"        # draft
 
-# Same safety flags: --dry-run, --dangerously-send [--yes]
+# Same safety flags: --dry-run, --dangerously-send [--yes], --show
 ```
 
 `<id>` can be any message id from `messages list`, `messages show`, or
 `messages search` — regardless of mailbox (INBOX, All Mail, Archive,
-Exchange Inbox, etc.).
+Exchange Inbox, etc.). `--show` pops the Mail.app compose window (off
+by default).
 
 ### Drafts list
 
@@ -321,12 +330,12 @@ mailctl messages move <id> --to <mailbox> [--dry-run]
 mailctl messages delete <id> [--permanent] [--yes] [--dry-run]
 mailctl compose --to X [--cc Y] [--bcc Z] --subject S \
                 (--body T | --body-file F | stdin) \
-                [--from A] [--attach P ...] \
+                [--from A] [--attach P ...] [--show] \
                 [--dry-run] [--dangerously-send [--yes]]
 mailctl reply <id> [--all] (--body T | --body-file F | stdin) \
-                   [--dry-run] [--dangerously-send [--yes]]
+                   [--show] [--dry-run] [--dangerously-send [--yes]]
 mailctl forward <id> --to X (--body T | --body-file F | stdin) \
-                   [--dry-run] [--dangerously-send [--yes]]
+                   [--show] [--dry-run] [--dangerously-send [--yes]]
 mailctl drafts list [--account X] [--json]
 ```
 

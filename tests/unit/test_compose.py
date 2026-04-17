@@ -974,6 +974,51 @@ class TestComposePrintsCanonicalId:
         assert "senderEmail" not in script
 
 
+# --------------------------------------------------------------------------- #
+# Silent-by-default: `compose` must not pop a Mail.app compose window by
+# default. `--show` restores the old GUI preview.
+# --------------------------------------------------------------------------- #
+
+
+class TestComposeSilentByDefault:
+    def test_default_visible_false(self):
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            include_send=False,
+        )
+        assert "visible:false" in script
+        assert "visible:true" not in script
+
+    def test_show_window_flips_visible(self):
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            include_send=False,
+            show_window=True,
+        )
+        assert "visible:true" in script
+        assert "visible:false" not in script
+
+    def test_cli_default_invisible(self, mock_osascript):
+        mock_osascript.set_output("1")
+        runner.invoke(
+            _click_app,
+            ["compose", "--to", "x@y.com", "--subject", "S", "--body", "B"],
+        )
+        last = mock_osascript.last_script or ""
+        assert "visible:false" in last
+
+    def test_cli_show_flag_visible(self, mock_osascript):
+        mock_osascript.set_output("1")
+        runner.invoke(
+            _click_app,
+            ["compose", "--to", "x@y.com", "--subject", "S", "--body", "B", "--show"],
+        )
+        last = mock_osascript.last_script or ""
+        assert "visible:true" in last
+
+
 class TestParseAccountNamesOutput:
     def test_empty(self):
         assert parse_account_names_output("") == []

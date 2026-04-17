@@ -1162,6 +1162,81 @@ class TestMessageLocationThreaded:
         assert 'mailbox "INBOX" whose id is' not in script
 
 
+# --------------------------------------------------------------------------- #
+# Silent-by-default: `reply` and `forward` must not pop a Mail.app compose
+# window by default. `--show` restores the GUI preview.
+# --------------------------------------------------------------------------- #
+
+
+class TestReplyForwardSilentByDefault:
+    def test_reply_default_no_opening_window(self):
+        script = build_reply_script(
+            message_id="42",
+            account="A", mailbox="INBOX",
+            to=["a@x.com"], cc=[], subject="S", body="B",
+        )
+        assert "with opening window" not in script
+        # Still uses Mail.app's reply verb to preserve threading.
+        assert "reply originalMsg" in script
+
+    def test_reply_show_window_adds_opening_window(self):
+        script = build_reply_script(
+            message_id="42",
+            account="A", mailbox="INBOX",
+            to=["a@x.com"], cc=[], subject="S", body="B",
+            show_window=True,
+        )
+        assert "reply originalMsg with opening window" in script
+
+    def test_forward_default_no_opening_window(self):
+        script = build_forward_script(
+            message_id="42",
+            account="A", mailbox="INBOX",
+            to=["a@x.com"], subject="S", body="B",
+        )
+        assert "with opening window" not in script
+        assert "forward originalMsg" in script
+
+    def test_forward_show_window_adds_opening_window(self):
+        script = build_forward_script(
+            message_id="42",
+            account="A", mailbox="INBOX",
+            to=["a@x.com"], subject="S", body="B",
+            show_window=True,
+        )
+        assert "forward originalMsg with opening window" in script
+
+    def test_reply_cli_default_invisible(self, mock_osascript):
+        _multi_outputs(mock_osascript)
+        runner.invoke(_click_app, ["reply", "12345", "--body", "x"])
+        last = mock_osascript.calls[-1][2] if mock_osascript.calls else ""
+        assert "with opening window" not in last
+
+    def test_reply_cli_show_adds_window(self, mock_osascript):
+        _multi_outputs(mock_osascript)
+        runner.invoke(_click_app, ["reply", "12345", "--body", "x", "--show"])
+        last = mock_osascript.calls[-1][2] if mock_osascript.calls else ""
+        assert "with opening window" in last
+
+    def test_forward_cli_default_invisible(self, mock_osascript):
+        _multi_outputs(mock_osascript)
+        runner.invoke(
+            _click_app,
+            ["forward", "12345", "--to", "a@x.com", "--body", "x"],
+        )
+        last = mock_osascript.calls[-1][2] if mock_osascript.calls else ""
+        assert "with opening window" not in last
+
+    def test_forward_cli_show_adds_window(self, mock_osascript):
+        _multi_outputs(mock_osascript)
+        runner.invoke(
+            _click_app,
+            ["forward", "12345", "--to", "a@x.com", "--body", "x", "--show"],
+        )
+        last = mock_osascript.calls[-1][2] if mock_osascript.calls else ""
+        assert "with opening window" in last
+
+
 class TestResolveMessageLocation:
     """Issue #1: resolver maps a ROWID to (account_name, mailbox_path)."""
 
