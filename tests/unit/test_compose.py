@@ -846,6 +846,108 @@ class TestFromAccountNoLeak:
         assert "delete newMessage" in script
         assert "on error" in script
 
+
+# --------------------------------------------------------------------------- #
+# Regression: issue #5 — compose must print the canonical SQLite ROWID so the
+# downstream CLI (drafts edit, messages mark/show/delete) accepts the id
+# unchanged.
+# See https://github.com/jason-c-dev/cli.mail.app/issues/5.
+# --------------------------------------------------------------------------- #
+
+
+class TestComposePrintsCanonicalId:
+    """Issue #5: the id compose prints must be the same id space the rest
+    of mailctl uses. AppleScript returns small, internal integers; SQLite
+    ROWIDs are 5-6 digit numbers. Look up the canonical id via the
+    Envelope Index after save, fall back to the AppleScript id if the
+    index hasn't caught up yet."""
+
+    def test_canonical_id_returned_when_draft_indexed(
+        self, envelope_db, mock_osascript,
+    ):
+        """Happy path: SQLite has the freshly-saved draft, so the id
+        returned reflects the ROWID, not the AppleScript number."""
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+
+        drafts = envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/Drafts")
+        # Seed a draft that matches what we're about to compose.
+        rowid = envelope_db.add_message(
+            mailbox_rowid=drafts,
+            subject="issue5-canonical",
+            sender="alice@example.com",
+            date_received=1700000000,
+        )
+
+        # Two AppleScript calls: fetch_account_names, then compose.
+        mock_osascript.set_outputs(["Alice\nBob", "5"])
+        result = runner.invoke(
+            _click_app,
+            [
+                "compose",
+                "--to", "x@y.com",
+                "--subject", "issue5-canonical",
+                "--body", "b",
+                "--from", "Alice",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["id"] == str(rowid), (
+            f"compose returned {data['id']!r}, expected SQLite ROWID "
+            f"{rowid!r} (AppleScript returned '5')"
+        )
+
+    def test_fallback_to_applescript_id_when_not_indexed(
+        self, envelope_db, mock_osascript,
+    ):
+        """If SQLite doesn't know about the draft yet (index race), we
+        fall back to the AppleScript id rather than erroring. The user
+        can re-fetch via `drafts list` once the index catches up."""
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/Drafts")
+        # Deliberately do NOT seed any matching message.
+
+        mock_osascript.set_outputs(["Alice\nBob", "7"])
+        result = runner.invoke(
+            _click_app,
+            [
+                "compose",
+                "--to", "x@y.com",
+                "--subject", "no-match-here",
+                "--body", "b",
+                "--from", "Alice",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["id"] == "7", (
+            "fallback to AppleScript id when SQLite lookup is empty"
+        )
+
+    def test_send_path_keeps_applescript_id(
+        self, envelope_db, mock_osascript,
+    ):
+        """--dangerously-send doesn't save a draft; there's no ROWID
+        to look up. Return the AppleScript id unchanged."""
+        mock_osascript.set_outputs(["99"])
+        result = runner.invoke(
+            _click_app,
+            [
+                "compose",
+                "--to", "x@y.com",
+                "--subject", "sendpath",
+                "--body", "b",
+                "--dangerously-send",
+                "--yes",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["id"] == "99"
+
     def test_no_inline_item_1_email_addresses(self):
         """The bare `item 1 of (email addresses of X)` pattern fails with
         AppleScript -1700 because indexing into Mail-internal collections

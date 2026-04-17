@@ -334,6 +334,65 @@ def fetch_account_names() -> list[str]:
 # High-level compose orchestration
 # --------------------------------------------------------------------------- #
 
+def _lookup_canonical_draft_id(
+    *,
+    subject: str,
+    account: str | None,
+) -> str | None:
+    """Find the Envelope-Index ROWID of the draft we just created.
+
+    Mail.app's AppleScript returns an internal, monotonically-numbered
+    id for outgoing messages (e.g. ``5``) that no other ``mailctl``
+    subcommand accepts. The rest of the CLI operates on SQLite
+    ROWIDs (e.g. ``147221``). This helper bridges the gap: after
+    ``compose`` saves the draft, we query the Envelope Index for the
+    most-recent matching draft and return its ROWID.
+
+    Match criteria: ``subject`` exact, scope to the named account's
+    Drafts mailbox if *account* is given, otherwise look at every
+    Drafts mailbox. Ties break by newest ``date_received``.
+
+    Returns ``None`` if SQLite doesn't see a matching draft yet — the
+    caller should fall back to the AppleScript id in that case so the
+    UX doesn't regress from the old behaviour.
+    """
+    from mailctl.account_map import uuid_for_name
+    from mailctl.sqlite_engine import run_query
+
+    where: list[str] = [
+        "m.deleted = 0",
+        "mb.url LIKE '%/Drafts'",
+        "s.subject = ?",
+    ]
+    params: list = [subject]
+
+    if account:
+        uuid = uuid_for_name(account)
+        if uuid:
+            where.append(
+                "(mb.url LIKE ? OR mb.url LIKE ? OR mb.url LIKE ?)"
+            )
+            params.extend([
+                f"imap://{uuid}/%",
+                f"ews://{uuid}/%",
+                f"local://{uuid}/%",
+            ])
+
+    sql = f"""
+        SELECT m.ROWID AS id
+        FROM messages m
+        JOIN mailboxes mb ON mb.ROWID = m.mailbox
+        JOIN subjects  s  ON s.ROWID  = m.subject
+        WHERE {' AND '.join(where)}
+        ORDER BY m.date_received DESC, m.ROWID DESC
+        LIMIT 1
+    """
+    rows = run_query(sql, tuple(params))
+    if not rows:
+        return None
+    return str(rows[0]["id"])
+
+
 def perform_compose(
     *,
     to: list[str],
@@ -352,8 +411,15 @@ def perform_compose(
     verb — see :func:`build_compose_script`.
 
     Returns a dict with keys: ``action`` (``"draft"`` or ``"sent"``),
-    ``account``, ``to``, ``cc``, ``bcc``, ``subject``, and ``id`` (the
-    Mail.app message id returned by the AppleScript).
+    ``account``, ``to``, ``cc``, ``bcc``, ``subject``, and ``id``.
+
+    For the draft path, ``id`` is the canonical Envelope-Index ROWID
+    that every other ``mailctl`` subcommand accepts (see issue #5).
+    Falls back to the AppleScript-local id only if SQLite hasn't yet
+    indexed the newly-saved draft.
+
+    For the send path there is no draft in the index, so the
+    AppleScript-local id is returned unchanged.
     """
     script = build_compose_script(
         to=to,
@@ -366,9 +432,21 @@ def perform_compose(
         include_send=dangerously_send,
     )
     raw = run_applescript(script)
-    # The script returns the message id as a bare string; strip any
-    # surrounding whitespace or quotes.
-    message_id = raw.strip().strip('"')
+    applescript_id = raw.strip().strip('"')
+
+    message_id = applescript_id
+    if not dangerously_send:
+        try:
+            canonical = _lookup_canonical_draft_id(
+                subject=subject,
+                account=from_account,
+            )
+        except Exception:
+            # SQLite not accessible / schema moved. Keep AppleScript
+            # id rather than fail the whole compose.
+            canonical = None
+        if canonical:
+            message_id = canonical
 
     return {
         "action": "sent" if dangerously_send else "draft",

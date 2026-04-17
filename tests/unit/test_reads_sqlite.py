@@ -58,6 +58,22 @@ class TestMailboxesList:
         assert result.exit_code != 0
         assert "not found" in result.stderr.lower()
 
+    def test_unknown_account_exit_code_is_usage_error(self, envelope_db):
+        """Issue #6: unknown account must exit 2 (usage error), not 1.
+        Matches the contract used by `messages list --mailbox Nowhere`
+        and `messages show <bad-id>`, and what the mailctl skill
+        promises. See
+        https://github.com/jason-c-dev/cli.mail.app/issues/6."""
+        from mailctl.errors import EXIT_USAGE_ERROR
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
+        result = runner.invoke(
+            _click_app, ["mailboxes", "list", "--account", "Nonexistent"]
+        )
+        assert result.exit_code == EXIT_USAGE_ERROR, (
+            f"expected exit {EXIT_USAGE_ERROR} (usage error), got "
+            f"{result.exit_code}. stderr={result.stderr!r}"
+        )
+
     def test_json_output(self, envelope_db):
         envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
         result = runner.invoke(

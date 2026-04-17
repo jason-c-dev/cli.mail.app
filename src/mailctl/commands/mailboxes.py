@@ -224,6 +224,15 @@ def register(mailboxes_app: typer.Typer) -> None:
         try:
             data = fetch_mailboxes(account=account)
         except AppleScriptError as exc:
+            # Unknown-account is a usage error (the user passed a bad
+            # argument), not a general failure. Exit 2 here matches the
+            # contract the skill promises and the behaviour of
+            # `messages list --account Nowhere` and `messages show 99`.
+            # Without this branch, `handle_mail_error` would map it to
+            # exit 1 because AppleScriptError is generic.
+            if account and "not found" in str(exc).lower():
+                render_error(str(exc), no_color=no_color)
+                raise typer.Exit(code=EXIT_USAGE_ERROR)
             handle_mail_error(exc, no_color=no_color)
 
         # Defence-in-depth: even when AppleScript filters by account, also
