@@ -28,9 +28,15 @@ from typing import Any, List, Optional
 import typer
 from rich.console import Console
 
+from mailctl import message_lookup
 from mailctl.engine import run_applescript
 from mailctl.errors import AppleScriptError, EXIT_GENERAL_ERROR, EXIT_USAGE_ERROR
 from mailctl.output import handle_mail_error, render_error
+
+
+def _escape_applescript_string(value: str) -> str:
+    """Escape a string for inclusion inside an AppleScript double-quoted literal."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 # --------------------------------------------------------------------------- #
@@ -40,58 +46,43 @@ from mailctl.output import handle_mail_error, render_error
 
 def build_delete_messages_script(
     *,
-    message_ids: list[str],
+    locations: list[tuple[str, str, str]],
     permanent: bool = False,
-    account: str | None = None,
 ) -> str:
     """Return AppleScript that deletes messages.
 
-    When *permanent* is ``False`` (default), messages are moved to the Trash
-    mailbox — this is a non-destructive, reversible operation.
-
-    When *permanent* is ``True``, messages are permanently deleted using
-    the AppleScript ``delete`` verb.
+    When *permanent* is ``False`` (default), messages are moved to the
+    Trash mailbox of their own account — this is a non-destructive,
+    reversible operation. When *permanent* is ``True``, messages are
+    deleted via the AppleScript ``delete`` verb.
 
     Parameters
     ----------
-    message_ids:
-        One or more message IDs to delete.
+    locations:
+        List of ``(message_id, account_name, mailbox_path)`` triples.
+        Each message is addressed directly in its owning mailbox via
+        ``whose id is`` — no mailbox iteration, which is unreliable
+        for system mailboxes and large IMAP mailboxes.
     permanent:
         If ``True``, permanently delete; if ``False``, move to Trash.
-    account:
-        If provided, scope the message lookup to this account.
     """
-    # Build the message search scope
-    if account:
-        scope = f'every mailbox of account "{account}"'
-    else:
-        scope = "every mailbox of every account"
-
-    # Build list of IDs as AppleScript list
-    id_literals = ", ".join(f'"{mid}"' for mid in message_ids)
-
-    if permanent:
-        # Permanent delete uses the AppleScript `delete` verb directly
-        action_line = "delete msg"
-    else:
-        # Default: move to Trash (safe, reversible)
-        if account:
-            action_line = f'move msg to mailbox "Trash" of account "{account}"'
+    blocks: list[str] = []
+    for message_id, account, mailbox in locations:
+        acct = _escape_applescript_string(account)
+        src_mbox = _escape_applescript_string(mailbox)
+        if permanent:
+            action = "delete targetMsg"
         else:
-            action_line = 'set acctName to name of account of mbox\n                move msg to mailbox "Trash" of account acctName'
+            action = f'move targetMsg to mailbox "Trash" of account {acct}'
+        blocks.append(
+            f'set targetMsg to first message of mailbox {src_mbox} of account {acct} whose id is {message_id}\n'
+            f'    {action}'
+        )
 
+    body = "\n    ".join(blocks) if blocks else "-- no messages"
     return f'''\
 tell application "Mail"
-    set targetIds to {{{id_literals}}}
-    repeat with mbox in ({scope})
-        set msgs to every message of mbox
-        repeat with msg in msgs
-            set msgId to id of msg as string
-            if targetIds contains msgId then
-                {action_line}
-            end if
-        end repeat
-    end repeat
+    {body}
 end tell'''
 
 
@@ -104,17 +95,20 @@ def perform_delete(
     *,
     message_ids: list[str],
     permanent: bool = False,
-    account: str | None = None,
 ) -> dict[str, Any]:
     """Execute the delete operation via AppleScript.
 
-    Returns a result dict describing what was done.
-    Raises :class:`AppleScriptError` on failure.
+    Resolves each ID via SQLite to its owning account + mailbox, then
+    generates targeted AppleScript. Raises :class:`AppleScriptError`
+    if any id can't be resolved or if the AppleScript call fails.
     """
+    locations = [
+        (mid, *message_lookup.resolve_message_location(mid))
+        for mid in message_ids
+    ]
     script = build_delete_messages_script(
-        message_ids=message_ids,
+        locations=locations,
         permanent=permanent,
-        account=account,
     )
     run_applescript(script)
 
@@ -261,7 +255,6 @@ def register(messages_app: typer.Typer) -> None:
             result = perform_delete(
                 message_ids=list(message_ids),
                 permanent=permanent,
-                account=account,
             )
         except AppleScriptError as exc:
             from mailctl.engine import normalize_error_text

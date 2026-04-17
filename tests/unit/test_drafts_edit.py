@@ -58,7 +58,7 @@ class TestDraftsEditCommand:
         )
         script = mock_osascript.last_script
         assert script is not None
-        assert '"12345"' in script
+        assert "whose id is 12345" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -528,7 +528,9 @@ class TestDraftsArchitecture:
     def test_build_edit_script_returns_applescript(self):
         """C-215: build_edit_draft_script returns valid AppleScript."""
         script = build_edit_draft_script(
-            message_id="12345", subject="Test"
+            message_id="12345",
+            account="A", mailbox="Drafts",
+            subject="Test",
         )
         assert 'tell application "Mail"' in script
         assert "end tell" in script
@@ -537,6 +539,7 @@ class TestDraftsArchitecture:
         """Safety: edit script NEVER contains a 'send' verb."""
         script = build_edit_draft_script(
             message_id="12345",
+            account="A", mailbox="Drafts",
             subject="Test",
             body="Body text",
             to=["alice@example.com"],
@@ -561,6 +564,60 @@ class TestDraftsArchitecture:
             ["drafts", "edit", "12345", "--subject", "Test"],
         )
         assert result.exit_code != 0
+
+
+# --------------------------------------------------------------------------- #
+# Regression: issue #2 — drafts edit must not iterate mailboxes.
+# See https://github.com/jason-c-dev/cli.mail.app/issues/2.
+# --------------------------------------------------------------------------- #
+
+
+class TestNoMailboxIteration:
+    """Issue #2 regression: edit script targets the draft directly."""
+
+    def test_edit_script_has_no_iteration(self, mock_osascript):
+        mock_osascript.set_output("OK")
+        runner.invoke(
+            _click_app, ["drafts", "edit", "12345", "--subject", "New"]
+        )
+        script = mock_osascript.last_script or ""
+        assert "every mailbox of every account" not in script
+        assert "repeat with mbox" not in script
+        assert "every message of mbox" not in script
+        assert "whose id is 12345" in script
+
+
+class TestReadOnlyDraftError:
+    """Issue #2 follow-up: Mail.app's AppleScript refuses writes to saved
+    draft content (subject/body/recipients/attachments) with -10006 or
+    -10000. Surface a clear message pointing at issue #8 rather than
+    leaking the raw AppleScript error to the user."""
+
+    def test_minus_10006_maps_to_readonly_message(self, mock_osascript):
+        mock_osascript.set_error(
+            "execution error: Mail got an error: "
+            "Can't set subject of message to \"New\". (-10006)"
+        )
+        result = runner.invoke(
+            _click_app, ["drafts", "edit", "12345", "--subject", "New"]
+        )
+        assert result.exit_code != 0
+        combined = (result.output + (result.stderr if hasattr(result, "stderr") else ""))
+        # The specific AppleScript code should NOT leak to the user.
+        lowered = combined.lower()
+        assert "read-only" in lowered or "issues/8" in combined
+
+    def test_minus_10000_maps_to_readonly_message(self, mock_osascript):
+        mock_osascript.set_error(
+            "execution error: Mail got an error: AppleEvent handler failed. (-10000)"
+        )
+        result = runner.invoke(
+            _click_app, ["drafts", "edit", "12345", "--add-to", "x@y.com"]
+        )
+        assert result.exit_code != 0
+        combined = (result.output + (result.stderr if hasattr(result, "stderr") else ""))
+        lowered = combined.lower()
+        assert "read-only" in lowered or "issues/8" in combined
 
 
 # --------------------------------------------------------------------------- #

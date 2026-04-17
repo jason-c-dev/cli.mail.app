@@ -47,6 +47,7 @@ from mailctl.errors import (
     EXIT_GENERAL_ERROR,
     EXIT_USAGE_ERROR,
 )
+from mailctl import message_lookup
 from mailctl.output import handle_mail_error, render_error
 
 # Reuse shared utilities from compose — no duplication.
@@ -54,51 +55,6 @@ from mailctl.commands.compose import (
     _escape_applescript_string,
     resolve_body,
 )
-
-
-# --------------------------------------------------------------------------- #
-# Message location — resolve a ROWID to (account_name, mailbox_path)
-# --------------------------------------------------------------------------- #
-
-def resolve_message_location(message_id: str) -> tuple[str, str]:
-    """Resolve a message ROWID to the account + mailbox it lives in.
-
-    Reads the Envelope Index (SQLite) to find where Mail.app is actually
-    storing the message, then maps the account UUID back to the
-    user-facing name. Used by ``reply`` and ``forward`` so the
-    AppleScript that follows can scope its message lookup to the right
-    mailbox — not a hardcoded ``INBOX``.
-
-    Returns ``(account_name, mailbox_path)``. The mailbox path keeps any
-    provider prefix Mail.app uses internally (e.g. ``[Gmail]/All Mail``)
-    — that's what AppleScript expects. Raises :class:`AppleScriptError`
-    with a "not found" message if no row matches.
-    """
-    from mailctl.account_map import name_for_uuid
-    from mailctl.sqlite_engine import parse_mailbox_url, run_query
-
-    try:
-        rowid = int(message_id)
-    except ValueError:
-        raise AppleScriptError(f'Message "{message_id}" not found.')
-
-    rows = run_query(
-        """
-        SELECT mb.url AS mailbox_url
-        FROM messages m
-        JOIN mailboxes mb ON mb.ROWID = m.mailbox
-        WHERE m.ROWID = ?
-        """,
-        (rowid,),
-    )
-    if not rows:
-        raise AppleScriptError(f'Message "{message_id}" not found.')
-
-    _, account_uuid, mailbox_path = parse_mailbox_url(rows[0]["mailbox_url"] or "")
-    account_name = name_for_uuid(account_uuid) if account_uuid else ""
-    if not account_name or not mailbox_path:
-        raise AppleScriptError(f'Message "{message_id}" not found.')
-    return account_name, mailbox_path
 
 
 # --------------------------------------------------------------------------- #
@@ -788,7 +744,7 @@ def register(app: typer.Typer) -> None:
 
         # --- Resolve message location + fetch original (read-only, safe) -
         try:
-            msg_account, msg_mailbox = resolve_message_location(message_id)
+            msg_account, msg_mailbox = message_lookup.resolve_message_location(message_id)
             original = fetch_original_message(
                 message_id,
                 account=msg_account,
@@ -1010,7 +966,7 @@ def register(app: typer.Typer) -> None:
 
         # --- Resolve message location + fetch original (read-only, safe) -
         try:
-            msg_account, msg_mailbox = resolve_message_location(message_id)
+            msg_account, msg_mailbox = message_lookup.resolve_message_location(message_id)
             original = fetch_original_message(
                 message_id,
                 account=msg_account,

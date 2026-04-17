@@ -28,6 +28,7 @@ from typing import Any, List, Optional
 import typer
 from rich.console import Console
 
+from mailctl import message_lookup
 from mailctl.engine import run_applescript
 from mailctl.errors import AppleScriptError, EXIT_GENERAL_ERROR, EXIT_USAGE_ERROR
 from mailctl.output import handle_mail_error, render_error
@@ -60,6 +61,8 @@ def _escape_applescript_string(value: str) -> str:
 def build_edit_draft_script(
     *,
     message_id: str,
+    account: str,
+    mailbox: str,
     subject: str | None = None,
     body: str | None = None,
     to: list[str] | None = None,
@@ -72,8 +75,9 @@ def build_edit_draft_script(
 ) -> str:
     """Return AppleScript that modifies properties of a draft message.
 
-    The generated script locates the message by ID across all drafts
-    mailboxes, then applies the requested changes in a single script.
+    The generated script targets the draft directly by id in its owning
+    mailbox (``account``/``mailbox``) — no mailbox iteration, which is
+    unreliable for system mailboxes and large IMAP stores.
 
     This function NEVER generates a ``send`` verb — editing a draft is
     always a safe, non-sending operation.
@@ -159,23 +163,15 @@ def build_edit_draft_script(
                 f'            end repeat'
             )
 
-    edit_block = "\n            ".join(edit_lines)
+    edit_block = "\n    ".join(edit_lines) if edit_lines else "-- no edits"
+    acct = _escape_applescript_string(account)
+    mbox = _escape_applescript_string(mailbox)
 
     return f'''\
 tell application "Mail"
-    set targetId to "{message_id}"
-    repeat with mbox in (every mailbox of every account)
-        set msgs to every message of mbox
-        repeat with msg in msgs
-            set msgId to id of msg as string
-            if msgId is targetId then
-                set targetMsg to msg
-                {edit_block}
-                return "OK"
-            end if
-        end repeat
-    end repeat
-    error "Message not found: " & targetId
+    set targetMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}
+    {edit_block}
+    return "OK"
 end tell'''
 
 
@@ -199,11 +195,16 @@ def perform_edit_draft(
 ) -> dict[str, Any]:
     """Execute the draft edit operation via AppleScript.
 
-    Returns a result dict describing what was done.
-    Raises :class:`AppleScriptError` on failure.
+    Resolves the draft's owning account + mailbox via SQLite, then
+    applies the edits with a targeted AppleScript. Raises
+    :class:`AppleScriptError` if the id can't be resolved or if the
+    AppleScript call fails.
     """
+    account, mailbox = message_lookup.resolve_message_location(message_id)
     script = build_edit_draft_script(
         message_id=message_id,
+        account=account,
+        mailbox=mailbox,
         subject=subject,
         body=body,
         to=to,
@@ -706,6 +707,25 @@ def register(drafts_app: typer.Typer) -> None:
                 render_error(
                     f'Message "{message_id}" not found. '
                     f"Verify the message ID with 'mailctl messages list'.",
+                    no_color=no_color,
+                )
+                raise typer.Exit(code=EXIT_GENERAL_ERROR)
+            # Mail.app's AppleScript API treats the content-bearing
+            # properties of a saved draft (subject, body, recipients,
+            # attachments) as read-only. Writes return -10006 (for
+            # subject/body/content) or -10000 (for recipient/attachment
+            # edits). There's no CLI-side workaround that preserves
+            # threading and attachments — surface the limitation so the
+            # user can edit in Mail.app directly, or delete + recompose.
+            if "(-10006)" in exc_str or "(-10000)" in exc_str or "can't set" in exc_str:
+                render_error(
+                    "Mail.app's AppleScript API treats saved drafts as "
+                    "read-only — cannot edit subject, body, recipients, "
+                    "or attachments via the CLI. "
+                    "Open the draft in Mail.app and edit there, or "
+                    "`mailctl messages delete` + `mailctl compose` to "
+                    "recreate. Tracked at "
+                    "https://github.com/jason-c-dev/cli.mail.app/issues/8.",
                     no_color=no_color,
                 )
                 raise typer.Exit(code=EXIT_GENERAL_ERROR)

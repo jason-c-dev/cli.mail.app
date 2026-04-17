@@ -32,9 +32,15 @@ from typing import Any, List, Optional
 import typer
 from rich.console import Console
 
+from mailctl import message_lookup
 from mailctl.engine import run_applescript
 from mailctl.errors import AppleScriptError, EXIT_GENERAL_ERROR, EXIT_USAGE_ERROR
 from mailctl.output import handle_mail_error, render_error
+
+
+def _escape_applescript_string(value: str) -> str:
+    """Escape a string for inclusion inside an AppleScript double-quoted literal."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 # --------------------------------------------------------------------------- #
@@ -44,65 +50,56 @@ from mailctl.output import handle_mail_error, render_error
 
 def build_mark_messages_script(
     *,
-    message_ids: list[str],
+    locations: list[tuple[str, str, str]],
     read: bool | None = None,
     flagged: bool | None = None,
-    account: str | None = None,
 ) -> str:
     """Return AppleScript that sets read/flagged status on messages.
 
     Parameters
     ----------
-    message_ids:
-        One or more message IDs to update.
+    locations:
+        List of ``(message_id, account_name, mailbox_path)`` triples.
+        Each message is looked up directly by id in its owning mailbox —
+        no ``every mailbox of every account`` iteration, which is
+        unreliable for system mailboxes (Notes → ``-1728``) and large
+        IMAP mailboxes like Gmail's All Mail (``-1741``).
     read:
         If ``True`` set read status to true; if ``False`` set to false;
         if ``None`` leave unchanged.
     flagged:
         If ``True`` set flagged status to true; if ``False`` set to false;
         if ``None`` leave unchanged.
-    account:
-        If provided, scope the message lookup to this account.
 
     Returns
     -------
     str
         A complete AppleScript string ready for ``osascript -e``.
     """
-    # Build the property-setting lines
     set_lines: list[str] = []
     if read is not None:
         set_lines.append(
-            f"set read status of msg to {'true' if read else 'false'}"
+            f"set read status of targetMsg to {'true' if read else 'false'}"
         )
     if flagged is not None:
         set_lines.append(
-            f"set flagged status of msg to {'true' if flagged else 'false'}"
+            f"set flagged status of targetMsg to {'true' if flagged else 'false'}"
         )
 
-    set_block = "\n            ".join(set_lines)
+    blocks: list[str] = []
+    for message_id, account, mailbox in locations:
+        acct = _escape_applescript_string(account)
+        mbox = _escape_applescript_string(mailbox)
+        block_body = "\n    ".join(set_lines) if set_lines else "-- no-op"
+        blocks.append(
+            f'set targetMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}\n'
+            f'    {block_body}'
+        )
 
-    # Build the message search scope
-    if account:
-        scope = f'every mailbox of account "{account}"'
-    else:
-        scope = "every mailbox of every account"
-
-    # Build list of IDs as AppleScript list
-    id_literals = ", ".join(f'"{mid}"' for mid in message_ids)
-
+    body = "\n    ".join(blocks) if blocks else "-- no messages"
     return f'''\
 tell application "Mail"
-    set targetIds to {{{id_literals}}}
-    repeat with mbox in ({scope})
-        set msgs to every message of mbox
-        repeat with msg in msgs
-            set msgId to id of msg as string
-            if targetIds contains msgId then
-                {set_block}
-            end if
-        end repeat
-    end repeat
+    {body}
 end tell'''
 
 
@@ -113,50 +110,39 @@ end tell'''
 
 def build_move_messages_script(
     *,
-    message_ids: list[str],
+    locations: list[tuple[str, str, str]],
     target_mailbox: str,
-    account: str | None = None,
 ) -> str:
     """Return AppleScript that moves messages to a target mailbox.
 
+    The target mailbox is resolved within each message's **own**
+    account. Cross-account moves aren't supported by Mail.app's
+    ``move`` verb; a message's account is determined by where it
+    currently lives.
+
     Parameters
     ----------
-    message_ids:
-        One or more message IDs to move.
+    locations:
+        List of ``(message_id, account_name, mailbox_path)`` triples.
     target_mailbox:
-        The name of the mailbox to move messages to.
-    account:
-        If provided, scope both source and target to this account.
-
-    Returns
-    -------
-    str
-        A complete AppleScript string ready for ``osascript -e``.
+        The name of the destination mailbox (e.g. ``Archive``,
+        ``Trash``). Resolved against each message's own account.
     """
-    # Build the message search scope and target
-    if account:
-        scope = f'every mailbox of account "{account}"'
-        target = f'mailbox "{target_mailbox}" of account "{account}"'
-    else:
-        scope = "every mailbox of every account"
-        target = f'mailbox "{target_mailbox}"'
+    mbox_target = _escape_applescript_string(target_mailbox)
 
-    # Build list of IDs as AppleScript list
-    id_literals = ", ".join(f'"{mid}"' for mid in message_ids)
+    blocks: list[str] = []
+    for message_id, account, mailbox in locations:
+        acct = _escape_applescript_string(account)
+        src_mbox = _escape_applescript_string(mailbox)
+        blocks.append(
+            f'set targetMsg to first message of mailbox {src_mbox} of account {acct} whose id is {message_id}\n'
+            f'    move targetMsg to mailbox {mbox_target} of account {acct}'
+        )
 
+    body = "\n    ".join(blocks) if blocks else "-- no messages"
     return f'''\
 tell application "Mail"
-    set targetIds to {{{id_literals}}}
-    set destMailbox to {target}
-    repeat with mbox in ({scope})
-        set msgs to every message of mbox
-        repeat with msg in msgs
-            set msgId to id of msg as string
-            if targetIds contains msgId then
-                move msg to destMailbox
-            end if
-        end repeat
-    end repeat
+    {body}
 end tell'''
 
 
@@ -170,18 +156,22 @@ def perform_mark(
     message_ids: list[str],
     read: bool | None = None,
     flagged: bool | None = None,
-    account: str | None = None,
 ) -> dict[str, Any]:
     """Execute the mark operation via AppleScript.
 
-    Returns a result dict describing what was done.
-    Raises :class:`AppleScriptError` on failure.
+    Resolves each ID to its owning account + mailbox via SQLite, then
+    generates targeted AppleScript (no mailbox iteration). Raises
+    :class:`AppleScriptError` if any ID cannot be resolved or if the
+    AppleScript call fails.
     """
+    locations = [
+        (mid, *message_lookup.resolve_message_location(mid))
+        for mid in message_ids
+    ]
     script = build_mark_messages_script(
-        message_ids=message_ids,
+        locations=locations,
         read=read,
         flagged=flagged,
-        account=account,
     )
     run_applescript(script)
 
@@ -202,17 +192,20 @@ def perform_move(
     *,
     message_ids: list[str],
     target_mailbox: str,
-    account: str | None = None,
 ) -> dict[str, Any]:
     """Execute the move operation via AppleScript.
 
-    Returns a result dict describing what was done.
-    Raises :class:`AppleScriptError` on failure.
+    Resolves each ID to its owning account + mailbox. The destination
+    is resolved within each message's own account — cross-account
+    moves aren't supported by Mail.app.
     """
+    locations = [
+        (mid, *message_lookup.resolve_message_location(mid))
+        for mid in message_ids
+    ]
     script = build_move_messages_script(
-        message_ids=message_ids,
+        locations=locations,
         target_mailbox=target_mailbox,
-        account=account,
     )
     run_applescript(script)
 
@@ -403,7 +396,6 @@ def register(messages_app: typer.Typer) -> None:
                 message_ids=list(message_ids),
                 read=read_value,
                 flagged=flagged_value,
-                account=account,
             )
         except AppleScriptError as exc:
             # Provide clear message-not-found error if applicable.
@@ -489,7 +481,6 @@ def register(messages_app: typer.Typer) -> None:
             result = perform_move(
                 message_ids=list(message_ids),
                 target_mailbox=to,
-                account=account,
             )
         except AppleScriptError as exc:
             from mailctl.engine import normalize_error_text

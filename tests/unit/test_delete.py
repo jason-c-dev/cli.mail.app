@@ -54,7 +54,7 @@ class TestDeleteBasic:
         assert script is not None
         assert "Trash" in script
         # Should be a move operation, not a delete verb on the message directly
-        assert "move msg to" in script
+        assert "move targetMsg to" in script
 
     def test_delete_not_permanent_by_default(self, mock_osascript):
         """C-204: default delete does NOT use the AppleScript 'delete' verb."""
@@ -62,8 +62,8 @@ class TestDeleteBasic:
         runner.invoke(_click_app, ["messages", "delete", "12345"])
         script = mock_osascript.last_script
         assert script is not None
-        # The 'delete msg' line should NOT appear in default (trash) mode
-        assert "delete msg" not in script
+        # The 'delete targetMsg' line should NOT appear in default (trash) mode
+        assert "delete targetMsg" not in script
 
 
 # --------------------------------------------------------------------------- #
@@ -92,7 +92,7 @@ class TestDeletePermanent:
         )
         script = mock_osascript.last_script
         assert script is not None
-        assert "delete msg" in script
+        assert "delete targetMsg" in script
 
     def test_permanent_rejected_no_osascript(self, mock_osascript):
         """C-205: --permanent with 'n' does NOT invoke osascript."""
@@ -168,7 +168,7 @@ class TestDeleteYesAlone:
         script = mock_osascript.last_script
         assert script is not None
         assert "Trash" in script
-        assert "delete msg" not in script
+        assert "delete targetMsg" not in script
 
     def test_yes_alone_no_prompt(self, mock_osascript):
         """C-207: --yes alone does not show confirmation prompt."""
@@ -202,9 +202,9 @@ class TestDeleteBulk:
         )
         script = mock_osascript.last_script
         assert script is not None
-        assert '"100"' in script
-        assert '"200"' in script
-        assert '"300"' in script
+        assert "whose id is 100" in script
+        assert "whose id is 200" in script
+        assert "whose id is 300" in script
 
     def test_bulk_single_osascript_call(self, mock_osascript):
         """C-208: bulk delete batched into one osascript call."""
@@ -221,17 +221,21 @@ class TestDeleteBulk:
 
 
 class TestDeleteAccount:
-    def test_account_scoping(self, mock_osascript):
-        """C-209: --account scopes the AppleScript to the specified account."""
+    def test_account_in_script_from_resolver(self, mock_osascript):
+        """C-209: the account in the generated script comes from the SQLite
+        resolver (conftest stubs it to 'TestAccount'), not from --account.
+        Delete now addresses each id directly in its owning mailbox — the
+        --account flag is retained for backward compat but no longer
+        shapes the AppleScript."""
         mock_osascript.set_output("")
         result = runner.invoke(
             _click_app,
-            ["messages", "delete", "12345", "--account", "Work"],
+            ["messages", "delete", "12345"],
         )
         assert result.exit_code == 0, result.output
         script = mock_osascript.last_script
         assert script is not None
-        assert 'account "Work"' in script
+        assert 'account "TestAccount"' in script
 
 
 # --------------------------------------------------------------------------- #
@@ -405,7 +409,7 @@ class TestDeleteArchitecture:
     def test_build_delete_script_returns_applescript(self):
         """C-215: build_delete_messages_script returns valid AppleScript."""
         script = build_delete_messages_script(
-            message_ids=["12345"]
+            locations=[("12345", "A", "INBOX")],
         )
         assert 'tell application "Mail"' in script
         assert "end tell" in script
@@ -413,17 +417,17 @@ class TestDeleteArchitecture:
     def test_build_delete_script_trash_mode(self):
         """C-215: default mode generates move to Trash."""
         script = build_delete_messages_script(
-            message_ids=["12345"], permanent=False
+            locations=[("12345", "A", "INBOX")], permanent=False,
         )
         assert "Trash" in script
-        assert "delete msg" not in script
+        assert "delete targetMsg" not in script
 
     def test_build_delete_script_permanent_mode(self):
         """C-215: permanent mode generates delete verb."""
         script = build_delete_messages_script(
-            message_ids=["12345"], permanent=True
+            locations=[("12345", "A", "INBOX")], permanent=True,
         )
-        assert "delete msg" in script
+        assert "delete targetMsg" in script
 
     def test_handle_mail_error_used(self, mock_osascript):
         """C-215: delete uses handle_mail_error for error handling."""
@@ -432,6 +436,35 @@ class TestDeleteArchitecture:
             _click_app, ["messages", "delete", "12345"]
         )
         assert result.exit_code != 0
+
+
+# --------------------------------------------------------------------------- #
+# Regression: issue #2 — delete must not iterate mailboxes.
+# See https://github.com/jason-c-dev/cli.mail.app/issues/2.
+# --------------------------------------------------------------------------- #
+
+
+class TestNoMailboxIteration:
+    """Issue #2 regression: delete script targets ids directly."""
+
+    def test_delete_script_has_no_iteration(self, mock_osascript):
+        mock_osascript.set_output("")
+        runner.invoke(_click_app, ["messages", "delete", "12345"])
+        script = mock_osascript.last_script or ""
+        assert "every mailbox of every account" not in script
+        assert "repeat with mbox" not in script
+        assert "every message of mbox" not in script
+        assert "whose id is 12345" in script
+
+    def test_permanent_delete_script_has_no_iteration(self, mock_osascript):
+        mock_osascript.set_output("")
+        runner.invoke(
+            _click_app, ["messages", "delete", "12345", "--permanent", "--yes"]
+        )
+        script = mock_osascript.last_script or ""
+        assert "every mailbox of every account" not in script
+        assert "repeat with mbox" not in script
+        assert "whose id is 12345" in script
 
 
 # --------------------------------------------------------------------------- #

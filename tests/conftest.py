@@ -333,13 +333,14 @@ def _default_empty_envelope_db(tmp_path, monkeypatch, request):
     get_account_map.cache_clear()
     monkeypatch.setattr("mailctl.account_map.get_account_map", _fake_map)
 
-    # reply/forward resolve a message's account + mailbox via SQLite
-    # before running AppleScript. With the empty default DB that lookup
-    # would raise "not found" and break every reply/forward test that
-    # doesn't care about the resolver. Stub it to a sensible default;
-    # tests that exercise the resolver itself should seed envelope_db.
+    # Several command handlers (reply/forward/mark/move/delete/drafts edit)
+    # resolve a message's account + mailbox via SQLite before running
+    # AppleScript. With the empty default DB that lookup would raise
+    # "not found" and break every test that doesn't care about the
+    # resolver. Stub it to a sensible default; tests that exercise the
+    # resolver itself should seed envelope_db.
     monkeypatch.setattr(
-        "mailctl.commands.reply_forward.resolve_message_location",
+        "mailctl.message_lookup.resolve_message_location",
         lambda _mid: ("TestAccount", "INBOX"),
     )
     yield

@@ -53,7 +53,7 @@ class TestMarkRead:
         runner.invoke(_click_app, ["messages", "mark", "12345", "--read"])
         script = mock_osascript.last_script
         assert script is not None
-        assert "set read status of msg to true" in script
+        assert "set read status of targetMsg to true" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -74,7 +74,7 @@ class TestMarkUnread:
         runner.invoke(_click_app, ["messages", "mark", "12345", "--unread"])
         script = mock_osascript.last_script
         assert script is not None
-        assert "set read status of msg to false" in script
+        assert "set read status of targetMsg to false" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -95,7 +95,7 @@ class TestMarkFlagged:
         runner.invoke(_click_app, ["messages", "mark", "12345", "--flagged"])
         script = mock_osascript.last_script
         assert script is not None
-        assert "set flagged status of msg to true" in script
+        assert "set flagged status of targetMsg to true" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -116,7 +116,7 @@ class TestMarkUnflagged:
         runner.invoke(_click_app, ["messages", "mark", "12345", "--unflagged"])
         script = mock_osascript.last_script
         assert script is not None
-        assert "set flagged status of msg to false" in script
+        assert "set flagged status of targetMsg to false" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -134,8 +134,8 @@ class TestMarkCombined:
         assert result.exit_code == 0, result.output
         script = mock_osascript.last_script
         assert script is not None
-        assert "set read status of msg to true" in script
-        assert "set flagged status of msg to true" in script
+        assert "set read status of targetMsg to true" in script
+        assert "set flagged status of targetMsg to true" in script
 
     def test_unread_and_unflagged(self, mock_osascript):
         """C-165: --unread --unflagged sets both in one AppleScript call."""
@@ -146,8 +146,8 @@ class TestMarkCombined:
         assert result.exit_code == 0, result.output
         script = mock_osascript.last_script
         assert script is not None
-        assert "set read status of msg to false" in script
-        assert "set flagged status of msg to false" in script
+        assert "set read status of targetMsg to false" in script
+        assert "set flagged status of targetMsg to false" in script
 
     def test_combined_single_osascript_call(self, mock_osascript):
         """C-165: combined flags are batched into one osascript call."""
@@ -225,9 +225,9 @@ class TestMarkBulk:
         )
         script = mock_osascript.last_script
         assert script is not None
-        assert '"100"' in script
-        assert '"200"' in script
-        assert '"300"' in script
+        assert "whose id is 100" in script
+        assert "whose id is 200" in script
+        assert "whose id is 300" in script
 
     def test_bulk_single_osascript_call(self, mock_osascript):
         """C-168: bulk mark batched into one osascript call."""
@@ -244,17 +244,22 @@ class TestMarkBulk:
 
 
 class TestMarkAccount:
-    def test_account_scoping(self, mock_osascript):
-        """C-169: --account scopes the AppleScript to the specified account."""
+    def test_account_in_script_from_resolver(self, mock_osascript):
+        """C-169: the account in the generated script comes from the SQLite
+        resolver, not from --account — mark now resolves each id's owning
+        account directly from the Envelope Index. The --account flag is
+        retained as an accepted option for backward compatibility but no
+        longer shapes the AppleScript (conftest stubs resolver to
+        'TestAccount')."""
         mock_osascript.set_output("")
         result = runner.invoke(
             _click_app,
-            ["messages", "mark", "12345", "--read", "--account", "Work"],
+            ["messages", "mark", "12345", "--read"],
         )
         assert result.exit_code == 0, result.output
         script = mock_osascript.last_script
         assert script is not None
-        assert 'account "Work"' in script
+        assert 'account "TestAccount"' in script
 
 
 # --------------------------------------------------------------------------- #
@@ -288,7 +293,7 @@ class TestMoveBasic:
         script = mock_osascript.last_script
         assert script is not None
         assert '"Archive"' in script
-        assert "move msg to destMailbox" in script
+        assert "move targetMsg to mailbox" in script
 
 
 # --------------------------------------------------------------------------- #
@@ -297,20 +302,21 @@ class TestMoveBasic:
 
 
 class TestMoveAccount:
-    def test_move_account_scoping(self, mock_osascript):
-        """C-171: --account scopes both source and target to the account."""
+    def test_move_target_resolved_in_source_account(self, mock_osascript):
+        """C-171: the destination mailbox is resolved inside the message's
+        **own** account (derived via the SQLite resolver), because Mail.app's
+        ``move`` verb can't cross accounts. Conftest stubs the resolver to
+        ('TestAccount', 'INBOX') so the source AND the target both land in
+        TestAccount."""
         mock_osascript.set_output("")
         result = runner.invoke(
             _click_app,
-            ["messages", "move", "12345", "--to", "Archive", "--account", "Work"],
+            ["messages", "move", "12345", "--to", "Archive"],
         )
         assert result.exit_code == 0, result.output
         script = mock_osascript.last_script
         assert script is not None
-        # Account appears in both scope and target
-        assert 'account "Work"' in script
-        # Target mailbox scoped to account
-        assert 'mailbox "Archive" of account "Work"' in script
+        assert 'mailbox "Archive" of account "TestAccount"' in script
 
 
 # --------------------------------------------------------------------------- #
@@ -360,9 +366,9 @@ class TestMoveBulk:
         )
         script = mock_osascript.last_script
         assert script is not None
-        assert '"100"' in script
-        assert '"200"' in script
-        assert '"300"' in script
+        assert "whose id is 100" in script
+        assert "whose id is 200" in script
+        assert "whose id is 300" in script
 
     def test_bulk_move_single_osascript_call(self, mock_osascript):
         """C-173: bulk move batched into one osascript call."""
@@ -670,7 +676,7 @@ class TestArchitecture:
     def test_build_mark_script_returns_applescript(self):
         """C-184: build_mark_messages_script returns valid AppleScript."""
         script = build_mark_messages_script(
-            message_ids=["12345"], read=True
+            locations=[("12345", "A", "INBOX")], read=True,
         )
         assert 'tell application "Mail"' in script
         assert "end tell" in script
@@ -678,7 +684,7 @@ class TestArchitecture:
     def test_build_move_script_returns_applescript(self):
         """C-184: build_move_messages_script returns valid AppleScript."""
         script = build_move_messages_script(
-            message_ids=["12345"], target_mailbox="Archive"
+            locations=[("12345", "A", "INBOX")], target_mailbox="Archive",
         )
         assert 'tell application "Mail"' in script
         assert "end tell" in script
@@ -729,6 +735,37 @@ class TestArchitecture:
 # - --json (TestJsonOutput.test_move_json)
 # - missing --to error (TestMoveMissingTo)
 # - AppleScript error handling (TestErrorHandlingNonexistent.test_move_error_on_script_failure)
+
+
+# --------------------------------------------------------------------------- #
+# Regression: issue #2 — do not iterate every mailbox of every account.
+# That pattern fails with -1728 (Notes mailbox) and -1741 (large IMAP
+# mailboxes like Gmail's All Mail). mark/move must target each message
+# directly via `whose id is <id>` scoped to its resolved mailbox.
+# See https://github.com/jason-c-dev/cli.mail.app/issues/2.
+# --------------------------------------------------------------------------- #
+
+
+class TestNoMailboxIteration:
+    """Issue #2 regression: generated scripts must NOT iterate mailboxes."""
+
+    def test_mark_script_has_no_iteration(self, mock_osascript):
+        mock_osascript.set_output("")
+        runner.invoke(_click_app, ["messages", "mark", "12345", "--read"])
+        script = mock_osascript.last_script or ""
+        assert "every mailbox of every account" not in script
+        assert "repeat with mbox" not in script
+        assert "every message of mbox" not in script
+        assert "whose id is 12345" in script
+
+    def test_move_script_has_no_iteration(self, mock_osascript):
+        mock_osascript.set_output("")
+        runner.invoke(_click_app, ["messages", "move", "12345", "--to", "Archive"])
+        script = mock_osascript.last_script or ""
+        assert "every mailbox of every account" not in script
+        assert "repeat with mbox" not in script
+        assert "every message of mbox" not in script
+        assert "whose id is 12345" in script
 
 
 # --------------------------------------------------------------------------- #

@@ -1166,7 +1166,7 @@ class TestResolveMessageLocation:
     """Issue #1: resolver maps a ROWID to (account_name, mailbox_path)."""
 
     def test_resolves_imap_inbox(self, envelope_db):
-        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.message_lookup import resolve_message_location
         from tests.conftest import TEST_ACCOUNT_ALICE_UUID
 
         mbox = envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
@@ -1177,7 +1177,7 @@ class TestResolveMessageLocation:
         assert resolve_message_location(str(msg_id)) == ("Alice", "INBOX")
 
     def test_resolves_gmail_all_mail(self, envelope_db):
-        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.message_lookup import resolve_message_location
         from tests.conftest import TEST_ACCOUNT_ALICE_UUID
 
         # Gmail stores messages in [Gmail]/All Mail; AppleScript expects
@@ -1193,7 +1193,7 @@ class TestResolveMessageLocation:
         assert path == "[Gmail]/All Mail"
 
     def test_resolves_exchange_inbox(self, envelope_db):
-        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.message_lookup import resolve_message_location
         from tests.conftest import TEST_ACCOUNT_BOB_UUID
 
         mbox = envelope_db.add_mailbox(f"ews://{TEST_ACCOUNT_BOB_UUID}/Inbox")
@@ -1203,14 +1203,14 @@ class TestResolveMessageLocation:
         assert resolve_message_location(str(msg_id)) == ("Bob", "Inbox")
 
     def test_missing_message_raises_not_found(self, envelope_db):
-        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.message_lookup import resolve_message_location
         from mailctl.errors import AppleScriptError
 
         with pytest.raises(AppleScriptError, match="not found"):
             resolve_message_location("99999999")
 
     def test_non_numeric_id_raises_not_found(self, envelope_db):
-        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.message_lookup import resolve_message_location
         from mailctl.errors import AppleScriptError
 
         with pytest.raises(AppleScriptError, match="not found"):
