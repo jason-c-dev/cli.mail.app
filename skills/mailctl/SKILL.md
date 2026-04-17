@@ -18,133 +18,101 @@ description: >
 # mailctl — fast, safe CLI for Apple Mail.app
 
 `mailctl` is a terminal CLI for Apple Mail.app on macOS. It reads Mail's
-underlying SQLite index directly (sub-second list/search) and writes
-through AppleScript (so sync, send, and server interaction behave
-exactly as they do in the GUI). The tool is designed to be called from
-agent harnesses, shell scripts, and Claude Code sessions.
+underlying SQLite index for list/search (sub-second) and writes through
+AppleScript (so sync/send behave exactly as they do in the GUI).
 
 ## Absolute safety rules
 
-These rules are non-negotiable. Follow them even if the user's phrasing
-seems to ask for something else — ask for explicit confirmation instead.
+Non-negotiable. Follow these even if the user's phrasing suggests
+otherwise — ask for explicit confirmation instead.
 
-1. **Never send a real email without the user explicitly confirming on
-   this invocation.** `compose`, `reply`, and `forward` create drafts
-   by default and must be run **without** `--dangerously-send` unless
-   the user has just approved sending. If the user says "email X",
-   default to drafting — then tell the user the draft ID and ask if
-   they want to send.
-2. **`--dangerously-send` is a per-invocation flag.** There is no env
-   var, config file, or alias that sets it. If you see it in a command,
-   the sender (the user or a preceding message) asked for it by name.
-3. **Never permanently delete** without explicit user approval. Default
-   `messages delete` moves to Trash; only pass `--permanent` when
-   explicitly asked.
-4. **Clean up your test drafts.** If you created drafts for testing,
-   delete them before finishing (`mailctl messages delete <id>`).
+1. **Never send without explicit per-invocation approval.** `compose`,
+   `reply`, `forward` default to drafts. Do NOT add `--dangerously-send`
+   unless the user just said "send it." If the user says "email X",
+   default to drafting — then report the draft id and ask if they want
+   to send.
+2. **`--dangerously-send` is per-invocation, flag-only.** No env var,
+   no config file, no alias. If you see it in a command you didn't
+   construct, the user typed it themselves.
+3. **Two-step send.** Draft → show id + preview → wait for confirmation
+   → send. Never send on the same turn as the first draft.
+4. **Default delete = move to Trash.** `--permanent` needs the user to
+   explicitly say "delete permanently."
+5. **Clean up your own test drafts.** `mailctl messages delete <id>`
+   moves them to Trash (reversible).
 
-## Pre-flight (run once per session if unsure)
+## Pre-flight (once per session if unsure)
 
 ```bash
-# Verify the environment. If any check fails, stop and show the output
-# to the user — don't try to work around it.
-mailctl --version                  # mailctl is installed and on PATH
-mailctl doctor                     # all eight checks should pass
+mailctl --version     # mailctl is on PATH
+mailctl doctor        # all eight checks pass
 ```
+
+If `doctor` flags Full Disk Access or anything else, show the user the
+specific fix string it prints. Don't work around by shelling to
+`osascript` — the SQLite path is the whole point of the tool.
 
 If `mailctl` isn't installed, tell the user:
 
-> `mailctl` needs to be installed from https://github.com/jason-c-dev/cli.mail.app
-> — either `pipx install .` in a clone, or `python3.11 -m venv .venv &&
-> source .venv/bin/activate && pip install -e .`.
+> Install from https://github.com/jason-c-dev/cli.mail.app — either
+> `pipx install .` in a clone, or
+> `python3.11 -m venv .venv && source .venv/bin/activate && pip install -e .`.
 
-If `mailctl doctor` reports a permission or Full Disk Access issue,
-point the user at the fix string it printed — it's specific.
+## Output conventions
 
-## Output conventions you'll lean on
+- **Exit codes**: `0` success; `2` usage error (unknown account / mailbox
+  / message id); `1` other failure.
+- **IDs are Envelope-Index ROWIDs** (5–6 digit integers like `147221`).
+  Every subcommand uses the same id space — the id `compose`/`reply`/
+  `forward` prints is immediately accepted by `drafts list`,
+  `messages show/mark/move/delete`. No translation needed.
+- Every data-returning command takes `--json`. Prefer it for anything
+  programmatic; Rich tables truncate in narrow terminals.
+- Data → stdout, errors → stderr.
 
-- Every command that returns data takes `--json`. **Prefer `--json` for
-  any programmatic step**; parse with `jq` or Python.
-- Tables come out of Rich — pretty but truncating in narrow terminals.
-  Use `--json` when you need full values.
-- Exit code 0 = success, 2 = usage error (e.g. unknown account), 1 =
-  other failure. Errors go to stderr, data to stdout.
+## Command reference
 
-## Command reference (by task)
-
-### Listing accounts and mailboxes
+### Accounts & mailboxes (read)
 
 ```bash
-# All configured accounts
-mailctl accounts list
-mailctl accounts list --json              # [{name, email, type, enabled}, ...]
+mailctl accounts list [--json]
+# JSON keys: name, email, type, enabled
 
-# All mailboxes across accounts
-mailctl mailboxes list
-
-# One account's mailboxes (use this before targeting messages by --mailbox)
-mailctl mailboxes list --account <AccountName>
-mailctl mailboxes list --account <AccountName> --json
+mailctl mailboxes list [--account X] [--json]
 ```
 
-Account names are the ones Mail.app shows in Settings → Accounts (e.g.
-"Personal", "Work", "iCloud"). If the user says "my Gmail", that's the
-`name` on the Gmail account — look it up with `mailctl accounts list`
-if you're not sure.
+**Account name** = the `name` from `accounts list` (e.g. `Personal`,
+`Google`, `Work`). Not the email address. Used wherever `--account` or
+`--from` is accepted.
+
+**INBOX vs Inbox**: IMAP uses `INBOX` (upper); Exchange uses `Inbox`
+(title case). Always confirm via `mailboxes list --account X` before
+targeting a mailbox by name.
 
 ### Reading messages
 
 ```bash
-# 25 most recent in the primary INBOX
-mailctl messages list
+# List (newest first, default 25)
+mailctl messages list [--account X] [--mailbox M] \
+    [--unread] [--from F] [--subject S] \
+    [--since YYYY-MM-DD] [--before YYYY-MM-DD] \
+    [--limit N] [--json]
 
-# Scope to an account
-mailctl messages list --account <AccountName>
+# Show one
+mailctl messages show <id> [--headers] [--raw] [--json]
 
-# Other mailbox (use `mailboxes list --account X` to find valid names;
-# Exchange uses "Inbox", most IMAP uses "INBOX" — they're different).
-mailctl messages list --account <AccountName> --mailbox "Sent Mail"
-
-# Filters (all combine; all case-insensitive substring where it makes sense)
-mailctl messages list --account <A> --unread
-mailctl messages list --account <A> --from acme
-mailctl messages list --account <A> --subject receipt
-mailctl messages list --account <A> --since 2026-04-01 --before 2026-04-16
-
-# Machine-readable; pipe into jq
-mailctl messages list --account <A> --limit 10 --json | jq '.[] | {id, subject, from}'
-
-# Show one message (id comes from `list --json`)
-mailctl messages show 12345
-mailctl messages show 12345 --json
+# Cross-account search (every account unless scoped)
+mailctl messages search [--account X] [--mailbox M] \
+    [--from F] [--subject S] \
+    [--since D] [--before D] [--limit N] [--json]
 ```
 
 JSON keys:
-- `list`: `id`, `date`, `from`, `subject`, `read`, `flagged`
-- `show`: `id`, `date`, `from`, `to`, `cc`, `bcc`, `subject`, `body`,
-  `headers`, `attachments`, `read`, `flagged`
+- `list`: `id, date, from, subject, read, flagged`
+- `show`: `id, date, from, to, cc, bcc, subject, body, headers, attachments, read, flagged`
+- `search`: list keys plus `account, mailbox`
 
-Bodies can be empty when a message is only partially synced (IMAP
-partial). That's not an error; note it if relevant.
-
-### Cross-account search
-
-```bash
-# Search every account at once
-mailctl messages search --subject receipt
-mailctl messages search --from "vendor@acme.com"
-mailctl messages search --since 2025-01-01 --before 2026-01-01 --from acme
-
-# Scope to one account / one mailbox
-mailctl messages search --account <A> --subject invoice
-mailctl messages search --account <A> --mailbox INBOX --from bob
-
-# JSON
-mailctl messages search --subject receipt --limit 20 --json
-```
-
-`--body` (full-text body search) is accepted but not supported by the
-SQLite backend yet — it'll error. Use `--subject` or `--from` instead.
+All `--from` / `--subject` filters are case-insensitive substring.
 
 ### Drafting email (safe default)
 
@@ -153,216 +121,215 @@ creates a draft — nothing leaves the mailbox.
 
 ```bash
 # Inline body
-mailctl compose --to friend@example.com --subject "Hi" --body "Hello"
+mailctl compose --to X --subject S --body B
 
-# Body from a file (preferred for anything multi-line — easier to review)
-mailctl compose --to friend@example.com --subject "Report" --body-file /tmp/report.md
+# File body (preferred for multi-line — easier to review)
+mailctl compose --to X --subject S --body-file /tmp/body.md
 
-# Body from stdin
-cat /tmp/body.txt | mailctl compose --to friend@example.com --subject "Hi"
+# Stdin
+cat body.txt | mailctl compose --to X --subject S
 
-# Multiple recipients (flag repeats)
-mailctl compose --to a@x.y --to b@x.y --cc c@x.y --subject "..." --body "..."
+# Multiple recipients + cc/bcc + attachments (repeat flags)
+mailctl compose --to a@x.y --to b@x.y --cc c@x.y \
+    --subject S --body B \
+    --attach ~/a.pdf --attach ~/b.png
 
-# Attachments (flag repeats)
-mailctl compose --to friend@example.com --subject "Photos" --body "Enjoy" \
-    --attach ~/Pictures/1.jpg --attach ~/Pictures/2.jpg
-
-# Send from a specific account
-mailctl compose --to friend@example.com --subject "Hi" --body "..." --from <AccountName>
+# From a specific account (use the account `name` from `accounts list`)
+mailctl compose --to X --subject S --body B --from Personal
 ```
 
-After composing, tell the user the draft ID the command printed and
-ask whether to send. Draft IDs also appear in `mailctl drafts list`.
+`compose` prints the draft's canonical id. Relay it to the user and
+ask whether to send. The id is also in `mailctl drafts list`.
 
-### Dry-run (rehearsal; never touches Mail.app)
+### Dry run (rehearsal; never touches Mail.app)
 
 ```bash
-mailctl compose --to friend@example.com --subject "Hi" --body "..." --dry-run
+mailctl compose --to X --subject S --body B --dry-run
+mailctl reply   <id> --body B --dry-run
+mailctl forward <id> --to X --body B --dry-run
 ```
 
-Great when you're unsure about a command shape.
+Use this when you're unsure about a command shape.
 
-### Sending (only after explicit approval)
+### Sending (only after explicit user approval)
 
 ```bash
-# Interactive: prompts "Send? (y/N)" — default is No
-mailctl compose --to friend@example.com --subject "Hi" --body "..." --dangerously-send
+# Interactive: prompts "Send? (y/N)", default No
+mailctl compose --to X --subject S --body B --dangerously-send
 
-# Scripted: bypasses the prompt. Still requires --dangerously-send.
-# Only use this if the user has just approved sending.
-mailctl compose --to friend@example.com --subject "Hi" --body "..." --dangerously-send --yes
+# Scripted: bypasses prompt. Only use when the user JUST said "yes, send."
+mailctl compose --to X --subject S --body B --dangerously-send --yes
 ```
 
-**Important rule of thumb**: don't run `--dangerously-send` on the same
-turn as the first draft. Create the draft, show the user the ID and a
-preview, and let them confirm. If you've drafted something you want to
-send, do it in two steps.
+Two-step pattern: draft first → show the id → wait for user confirmation
+→ then run the send. Don't draft and send on the same turn.
 
-### Replying and forwarding
+### Reply & forward
 
 ```bash
-# Reply to sender only (draft)
-mailctl reply 12345 --body "Thanks!"
+mailctl reply <id> --body "Thanks"              # draft
+mailctl reply <id> --all --body "Thanks all"    # reply-all draft
+mailctl forward <id> --to X --body "FYI"        # draft
 
-# Reply-all (draft)
-mailctl reply 12345 --all --body "Thanks everyone!"
-
-# Forward to a new recipient (draft)
-mailctl forward 12345 --to friend@example.com --body "FYI"
-
-# Same safety model: dry-run, --dangerously-send, confirmation
-mailctl reply 12345 --body "Thanks!" --dry-run
-mailctl reply 12345 --body "Thanks!" --dangerously-send
+# Same safety flags: --dry-run, --dangerously-send [--yes]
 ```
 
-### Draft management
+`<id>` can be any message id from `messages list`, `messages show`, or
+`messages search` — regardless of mailbox (INBOX, All Mail, Archive,
+Exchange Inbox, etc.).
+
+### Drafts list
 
 ```bash
-# List drafts across accounts
-mailctl drafts list
-mailctl drafts list --account <AccountName>
-mailctl drafts list --json
-
-# Edit an existing draft (never sends; no --dangerously-send on this command)
-mailctl drafts edit 9876 --subject "New subject"
-mailctl drafts edit 9876 --body-file /tmp/updated.md
-mailctl drafts edit 9876 --add-to another@example.com
-mailctl drafts edit 9876 --remove-to wrong@example.com
-mailctl drafts edit 9876 --attach /path/to/file.pdf
-mailctl drafts edit 9876 --dry-run
-
-# Delete a draft (moves to Trash by default)
-mailctl messages delete 9876
+mailctl drafts list [--account X] [--json]
+# JSON keys: account, id, date, to, subject
 ```
 
-### Triage (read/unread, flag, move)
+### Triage — mark, move
 
 ```bash
-# Read / unread
-mailctl messages mark 12345 --read
-mailctl messages mark 12345 --unread
+# Read / flagged state (works on any message, including drafts)
+mailctl messages mark <id> --read        # or --unread / --flagged / --unflagged
 
-# Flag / unflag
-mailctl messages mark 12345 --flagged
-mailctl messages mark 12345 --unflagged
-
-# Move to another mailbox (same account)
-mailctl messages move 12345 --to Archive
+# Move within the source message's account (see "What mailctl CAN'T do")
+mailctl messages move <id> --to Archive
 ```
 
-All of these take `--dry-run` for rehearsal.
+Both take `--dry-run`.
 
 ### Deletion
 
 ```bash
-# Move to Trash (default — recoverable via Mail.app GUI)
-mailctl messages delete 12345
+# Default — move to Trash (reversible via Mail.app GUI)
+mailctl messages delete <id>
 
-# Permanent (requires explicit confirmation or --yes). Ask the user
-# first — don't offer this proactively.
-mailctl messages delete 12345 --permanent
+# Permanent — requires explicit user approval
+mailctl messages delete <id> --permanent [--yes]
 ```
 
-## Common workflows
+## What mailctl CAN'T do
 
-### "What's unread in my Personal account today?"
+Reach for these so you don't hammer the CLI on a no-op. Surface the
+limitation + the stated workaround to the user.
+
+### Edit a saved draft's subject / body / recipients / attachments
+
+Mail.app's AppleScript API treats saved drafts as read-only for content.
+`drafts edit --subject/--body/--to/--cc/--bcc/--add-to/--attach/...`
+returns a clear error pointing at
+[issue #8](https://github.com/jason-c-dev/cli.mail.app/issues/8).
+
+What DOES work on a saved draft: `messages mark --read/--flagged`
+(state-only mutations).
+
+**Workaround**: read the original via `messages show <id>` if you need
+its current content, then `mailctl messages delete <id>` (moves to
+Trash) and `mailctl compose` a new one with the edits. Or the user can
+edit in Mail.app's GUI directly.
+
+### Move between accounts
+
+Mail.app's `move` verb can't cross accounts. `messages move --to X`
+resolves `X` inside the **source message's own account** only. If the
+target doesn't exist there, the CLI errors with a list of that
+account's real mailboxes — read that list, pick a real target, or tell
+the user.
+
+**Workaround** (requires user approval): *send* the content to the
+other account rather than moving it.
 
 ```bash
-mailctl messages list --account Personal --unread --since "$(date +%Y-%m-%d)" --limit 25
+# Draft — tell the user the draft id, send on their confirmation
+mailctl forward <id> --to <other-account-email> --body "moving to other account"
 ```
 
-### "Find the latest invoice from Acme"
+Confirm with the user before adding `--dangerously-send`.
+
+### Body-substring search
+
+`mailctl messages search --body X` errors cleanly. Body text isn't in
+the Envelope Index. Use `--subject` or `--from` — or tell the user the
+limitation.
+
+### Stable ids across Gmail IMAP sync
+
+Gmail can reassign a draft's UID after a save, which changes the
+Envelope-Index ROWID. If an id you stored a moment ago is suddenly
+"not found," re-fetch from `drafts list`.
+
+### Anything that isn't Apple Mail.app on macOS
+
+Wrong tool — tell the user.
+
+## Common-error decoder
+
+Short map from stderr text to the right next step. Sample matches are
+case-insensitive substrings.
+
+| Error text contains…                              | What it means                                   | Next step |
+|---------------------------------------------------|-------------------------------------------------|-----------|
+| `Account "X" not found`                           | `--account` name unknown                        | `mailctl accounts list` |
+| `Mailbox "X" not found`                           | `--mailbox` absent in that account              | `mailctl mailboxes list --account <Y>` |
+| `Mailbox "X" not found in account "Y"`            | `move --to` target absent (Issue #4)            | Pick from the account's list printed in the error |
+| `Message "X" not found`                           | bad id, or id was deleted / re-UIDed by Gmail   | Re-fetch via `messages list` or `drafts list` |
+| `saved drafts as read-only` / `issues/8`          | Mail.app won't let the CLI edit this draft      | Delete + recompose, or edit in Mail.app GUI |
+| `Full Disk Access`                                | `doctor` flagged TCC                            | System Settings → Privacy & Security → Full Disk Access |
+| `--body` / `body search is not yet supported`     | body search not implemented                     | Use `--subject` or `--from` |
+
+## Gotchas
+
+- **Bodies can be empty** on partially-synced IMAP messages. Not an
+  error — tell the user if it matters.
+- **Mailbox names are case- AND form-sensitive.** `INBOX` ≠ `Inbox`;
+  `All Mail` lives under `[Gmail]/All Mail` internally but the visible
+  name is what the CLI accepts.
+- **Don't shell out to `osascript`** as a workaround. If the CLI can't
+  do something, say so and stop — the Mail.app + SQLite boundary is
+  the safety model.
+
+## Common one-liners
 
 ```bash
-mailctl messages search --from acme --subject invoice --limit 5 --json | jq '.[0]'
+# Unread in Personal today
+mailctl messages list --account Personal --unread --since "$(date +%Y-%m-%d)"
+
+# Latest invoice from Acme (JSON, top match)
+mailctl messages search --from acme --subject invoice --limit 1 --json
+
+# Draft a reply (context, then draft; tell user the id)
+mailctl messages show <id>
+mailctl reply <id> --body "Thanks — taking a look this afternoon."
+
+# Two-step send (user already confirmed the second line)
+mailctl compose --to manager@example.com --subject "Weekly status" --body-file /tmp/status.md --from Personal
+mailctl compose --to manager@example.com --subject "Weekly status" --body-file /tmp/status.md --from Personal --dangerously-send --yes
 ```
-
-### "Draft a reply to message 12345 thanking them"
-
-```bash
-mailctl messages show 12345                 # make sure you have context
-mailctl reply 12345 --body "Thanks — I'll take a look this afternoon."
-# → tell the user the draft ID, offer to send if they confirm
-```
-
-### "Mark every receipt as read"
-
-Be careful — this mutates state. Confirm with the user first.
-
-```bash
-# First, preview
-mailctl messages search --subject receipt --json | jq -r '.[].id' > /tmp/receipt_ids.txt
-cat /tmp/receipt_ids.txt                     # show user for confirmation
-
-# Then act (one ID at a time; bulk isn't all-or-nothing, but it's
-# easy to loop over IDs)
-while read id; do mailctl messages mark "$id" --read; done < /tmp/receipt_ids.txt
-```
-
-### "Send the weekly status to my manager"
-
-Two steps. Never send on the first turn.
-
-```bash
-# Step 1: draft
-mailctl compose --to manager@example.com --subject "Weekly status" \
-    --body-file /tmp/status.md --from Personal
-# → tell the user the draft ID; `mailctl messages show <id>` to preview
-
-# Step 2 (only after user confirms): send
-mailctl compose --to manager@example.com --subject "Weekly status" \
-    --body-file /tmp/status.md --from Personal --dangerously-send --yes
-```
-
-## Gotchas worth knowing
-
-- **INBOX vs Inbox**: IMAP accounts (Gmail, most providers) use
-  `INBOX` (uppercase). Exchange/EWS accounts use `Inbox` (title case).
-  Always run `mailctl mailboxes list --account X` first if you're not
-  sure.
-- **Gmail label indirection**: Gmail represents INBOX / labels as
-  virtual mailboxes over `[Gmail]/All Mail`. `mailctl` handles this
-  transparently when you pass `--mailbox INBOX`; you don't need to do
-  anything special.
-- **Exchange can be slow**: Exchange accounts are slower to enumerate
-  than IMAP. `mailctl mailboxes list --account <Exchange>` may take a
-  few seconds the first time.
-- **Partial messages**: `messages show` body may be empty if the
-  message hasn't fully downloaded from the IMAP server. Not an error,
-  but note it to the user.
-- **Full Disk Access**: If `doctor` flags Full Disk Access missing,
-  the terminal (or whatever's running `mailctl`) needs to be added
-  in System Settings → Privacy & Security → Full Disk Access. Do NOT
-  try to work around this by shelling out to AppleScript — the SQLite
-  path is the whole point.
-- **Account type "unknown"**: Modern Exchange accounts sometimes
-  report their type as `unknown` in `accounts list`. That's a Mail.app
-  quirk, not a `mailctl` bug. Identify them by name instead.
 
 ## Quick reference
 
 ```
-mailctl doctor                                                    # health check
+mailctl doctor
 mailctl accounts list [--json]
 mailctl mailboxes list [--account X] [--json]
 mailctl messages list [--account X] [--mailbox M] [--unread] [--from F] \
-                      [--subject S] [--since YYYY-MM-DD] [--before YYYY-MM-DD] \
-                      [--limit N] [--json]
+                      [--subject S] [--since D] [--before D] [--limit N] [--json]
 mailctl messages show <id> [--headers] [--raw] [--json]
 mailctl messages search [--from F] [--subject S] [--since D] [--before D] \
                         [--account X] [--mailbox M] [--limit N] [--json]
-mailctl messages mark <id> --read|--unread|--flagged|--unflagged
-mailctl messages move <id> --to <mailbox>
-mailctl messages delete <id> [--permanent] [--yes]
+mailctl messages mark <id> --read|--unread|--flagged|--unflagged [--dry-run]
+mailctl messages move <id> --to <mailbox> [--dry-run]
+mailctl messages delete <id> [--permanent] [--yes] [--dry-run]
 mailctl compose --to X [--cc Y] [--bcc Z] --subject S \
                 (--body T | --body-file F | stdin) \
                 [--from A] [--attach P ...] \
                 [--dry-run] [--dangerously-send [--yes]]
-mailctl reply <id> [--all] (--body T | --body-file F | stdin) [--dry-run] [--dangerously-send [--yes]]
-mailctl forward <id> --to X (--body T | --body-file F | stdin) [--dry-run] [--dangerously-send [--yes]]
+mailctl reply <id> [--all] (--body T | --body-file F | stdin) \
+                   [--dry-run] [--dangerously-send [--yes]]
+mailctl forward <id> --to X (--body T | --body-file F | stdin) \
+                   [--dry-run] [--dangerously-send [--yes]]
 mailctl drafts list [--account X] [--json]
-mailctl drafts edit <id> [--subject S] [--body T] [--body-file F] \
-                         [--to X] [--cc Y] [--bcc Z] [--add-to X] [--remove-to X] \
-                         [--attach P] [--remove-attach N] [--dry-run]
 ```
+
+`drafts edit` exists but is limited by Mail.app to state-only mutations
+(see "What mailctl CAN'T do" → Edit a saved draft). Use `messages
+delete` + `compose` for content edits.
