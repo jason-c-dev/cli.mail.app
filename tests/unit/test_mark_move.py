@@ -18,11 +18,13 @@ from click.testing import CliRunner
 
 from mailctl.cli import app
 from mailctl.commands.mark_move import (
+    _verify_target_mailbox,
     build_mark_messages_script,
     build_move_messages_script,
     perform_mark,
     perform_move,
 )
+from mailctl.errors import AppleScriptError
 
 
 _click_app = typer.main.get_command(app)
@@ -766,6 +768,91 @@ class TestNoMailboxIteration:
         assert "repeat with mbox" not in script
         assert "every message of mbox" not in script
         assert "whose id is 12345" in script
+
+
+# --------------------------------------------------------------------------- #
+# Regression: issue #4 — `messages move --to` must pre-validate that the
+# target mailbox exists in the source message's account. Gmail's IMAP will
+# silently auto-label otherwise, giving a confusing duplicate.
+# See https://github.com/jason-c-dev/cli.mail.app/issues/4.
+# --------------------------------------------------------------------------- #
+
+
+class TestVerifyTargetMailbox:
+    """Issue #4: target mailbox is pre-validated via SQLite."""
+
+    def test_existing_mailbox_passes(self, envelope_db):
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/Archive")
+        # Should not raise.
+        _verify_target_mailbox("Alice", "Archive")
+
+    def test_missing_mailbox_raises(self, envelope_db):
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
+        # No Archive mailbox for Alice.
+        with pytest.raises(AppleScriptError, match="not found in account"):
+            _verify_target_mailbox("Alice", "Archive")
+
+    def test_missing_mailbox_lists_available(self, envelope_db):
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
+        envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/Sent")
+        try:
+            _verify_target_mailbox("Alice", "Archive")
+        except AppleScriptError as exc:
+            # User-facing error must enumerate what IS available so
+            # they can correct the command.
+            assert "INBOX" in str(exc)
+            assert "Sent" in str(exc)
+        else:
+            pytest.fail("expected AppleScriptError")
+
+    def test_gmail_label_path_resolves(self, envelope_db):
+        """Gmail stores [Gmail]/All Mail with URL encoding. The resolver
+        should treat the visible name the same way as for normal
+        mailboxes."""
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+        envelope_db.add_mailbox(
+            f"imap://{TEST_ACCOUNT_ALICE_UUID}/%5BGmail%5D/All%20Mail"
+        )
+        _verify_target_mailbox("Alice", "All Mail")
+
+
+class TestMoveValidatesBeforeAppleScript:
+    """Issue #4: the Typer handler must reject a bad target BEFORE
+    generating AppleScript, so nothing weird happens if Mail.app would
+    silently accept it."""
+
+    def test_move_rejects_missing_target(
+        self, mock_osascript, monkeypatch
+    ):
+        from mailctl.commands import mark_move as mm
+        def deny(_account, mailbox):
+            raise AppleScriptError(
+                f'Mailbox "{mailbox}" not found in account "Acct". '
+                f"Mailboxes in that account: INBOX, Sent."
+            )
+        monkeypatch.setattr(mm, "_verify_target_mailbox", deny)
+
+        mock_osascript.set_output("")
+        result = runner.invoke(
+            _click_app,
+            ["messages", "move", "12345", "--to", "Archive"],
+        )
+        assert result.exit_code != 0
+        assert len(mock_osascript.calls) == 0, (
+            "AppleScript must not run if target validation fails"
+        )
+        combined = (
+            result.output
+            + (result.stderr if hasattr(result, "stderr") else "")
+        )
+        assert "not found in account" in combined
+        # The user-facing message must carry the known-mailboxes hint
+        # through unchanged, not rewrap it.
+        assert "INBOX" in combined and "Sent" in combined
 
 
 # --------------------------------------------------------------------------- #

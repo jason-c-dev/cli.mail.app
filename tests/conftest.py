@@ -343,6 +343,16 @@ def _default_empty_envelope_db(tmp_path, monkeypatch, request):
         "mailctl.message_lookup.resolve_message_location",
         lambda _mid: ("TestAccount", "INBOX"),
     )
+    # `messages move` validates that the target mailbox exists in the
+    # source account via SQLite before running AppleScript. With the
+    # empty default DB that check would fail for every target, masking
+    # the behaviour the test actually cares about. Stub to a permissive
+    # default; tests that exercise the validator itself should seed
+    # envelope_db.
+    monkeypatch.setattr(
+        "mailctl.commands.mark_move._verify_target_mailbox",
+        lambda _account, _mailbox: None,
+    )
     yield
 
 

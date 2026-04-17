@@ -188,6 +188,55 @@ def perform_mark(
     }
 
 
+def _verify_target_mailbox(account: str, target_mailbox: str) -> None:
+    """Raise :class:`AppleScriptError` if *target_mailbox* does not exist in
+    *account*.
+
+    Uses the Envelope Index (SQLite) rather than AppleScript because
+    Mail.app's ``move`` verb silently accepts a non-existent mailbox
+    for Gmail accounts and creates a label — leaving the user with a
+    duplicated message they didn't ask for. A pre-flight check blocks
+    that path and surfaces a useful error listing valid names.
+    """
+    from mailctl.account_map import uuid_for_name
+    from mailctl.sqlite_engine import resolve_target_mailboxes, run_query
+
+    account_uuid = uuid_for_name(account)
+    if account_uuid is None:
+        # Shouldn't happen — resolver returned this account name — but
+        # guard anyway.
+        raise AppleScriptError(
+            f'Account "{account}" not found for move target validation.'
+        )
+
+    storage, labels = resolve_target_mailboxes(
+        account_uuid=account_uuid,
+        mailbox_name=target_mailbox,
+    )
+    if storage or labels:
+        return
+
+    # Produce an actionable error listing the account's actual mailboxes.
+    rows = run_query(
+        "SELECT url FROM mailboxes WHERE url LIKE ? OR url LIKE ? OR url LIKE ?",
+        (
+            f"imap://{account_uuid}/%",
+            f"ews://{account_uuid}/%",
+            f"local://{account_uuid}/%",
+        ),
+    )
+    from mailctl.sqlite_engine import parse_mailbox_url
+    names = sorted({
+        parse_mailbox_url(r["url"] or "")[2].rsplit("/", 1)[-1]
+        for r in rows
+    } - {""})
+    suggestion = ", ".join(names) if names else "(none)"
+    raise AppleScriptError(
+        f'Mailbox "{target_mailbox}" not found in account "{account}". '
+        f"Mailboxes in that account: {suggestion}."
+    )
+
+
 def perform_move(
     *,
     message_ids: list[str],
@@ -197,12 +246,18 @@ def perform_move(
 
     Resolves each ID to its owning account + mailbox. The destination
     is resolved within each message's own account — cross-account
-    moves aren't supported by Mail.app.
+    moves aren't supported by Mail.app. Pre-flights the target mailbox
+    via SQLite before running AppleScript so a missing target can't
+    silently duplicate into a Gmail label or succeed-with-no-effect.
     """
     locations = [
         (mid, *message_lookup.resolve_message_location(mid))
         for mid in message_ids
     ]
+    # Validate target mailbox per unique source account before doing
+    # anything. We want the error to fire before any AppleScript runs.
+    for account in {acct for (_mid, acct, _mbox) in locations}:
+        _verify_target_mailbox(account, target_mailbox)
     script = build_move_messages_script(
         locations=locations,
         target_mailbox=target_mailbox,
@@ -485,7 +540,17 @@ def register(messages_app: typer.Typer) -> None:
         except AppleScriptError as exc:
             from mailctl.engine import normalize_error_text
             exc_str = normalize_error_text(str(exc))
-            # Provide clear mailbox-not-found error if applicable.
+            # Preferred path: the SQLite pre-flight validator (see
+            # `_verify_target_mailbox`) produces a message of the
+            # shape `Mailbox "X" not found in account "Y". Mailboxes
+            # in that account: ...`. That's already actionable — pass
+            # it through unmodified rather than rewrapping it in the
+            # generic "not found" text.
+            if "not found in account" in exc_str:
+                render_error(str(exc), no_color=no_color)
+                raise typer.Exit(code=EXIT_GENERAL_ERROR)
+            # Fallback: generic mailbox-not-found from AppleScript
+            # (shouldn't happen post-validator, but belt-and-braces).
             if "mailbox" in exc_str and ("not found" in exc_str or "doesn't exist" in exc_str or "can't get" in exc_str):
                 render_error(
                     f'Mailbox "{to}" not found. '
