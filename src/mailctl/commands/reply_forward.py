@@ -57,6 +57,51 @@ from mailctl.commands.compose import (
 
 
 # --------------------------------------------------------------------------- #
+# Message location — resolve a ROWID to (account_name, mailbox_path)
+# --------------------------------------------------------------------------- #
+
+def resolve_message_location(message_id: str) -> tuple[str, str]:
+    """Resolve a message ROWID to the account + mailbox it lives in.
+
+    Reads the Envelope Index (SQLite) to find where Mail.app is actually
+    storing the message, then maps the account UUID back to the
+    user-facing name. Used by ``reply`` and ``forward`` so the
+    AppleScript that follows can scope its message lookup to the right
+    mailbox — not a hardcoded ``INBOX``.
+
+    Returns ``(account_name, mailbox_path)``. The mailbox path keeps any
+    provider prefix Mail.app uses internally (e.g. ``[Gmail]/All Mail``)
+    — that's what AppleScript expects. Raises :class:`AppleScriptError`
+    with a "not found" message if no row matches.
+    """
+    from mailctl.account_map import name_for_uuid
+    from mailctl.sqlite_engine import parse_mailbox_url, run_query
+
+    try:
+        rowid = int(message_id)
+    except ValueError:
+        raise AppleScriptError(f'Message "{message_id}" not found.')
+
+    rows = run_query(
+        """
+        SELECT mb.url AS mailbox_url
+        FROM messages m
+        JOIN mailboxes mb ON mb.ROWID = m.mailbox
+        WHERE m.ROWID = ?
+        """,
+        (rowid,),
+    )
+    if not rows:
+        raise AppleScriptError(f'Message "{message_id}" not found.')
+
+    _, account_uuid, mailbox_path = parse_mailbox_url(rows[0]["mailbox_url"] or "")
+    account_name = name_for_uuid(account_uuid) if account_uuid else ""
+    if not account_name or not mailbox_path:
+        raise AppleScriptError(f'Message "{message_id}" not found.')
+    return account_name, mailbox_path
+
+
+# --------------------------------------------------------------------------- #
 # AppleScript generation — fetch user's own email addresses
 # --------------------------------------------------------------------------- #
 
@@ -103,19 +148,30 @@ def fetch_user_emails() -> list[str]:
 # AppleScript generation — fetch original message for reply / forward
 # --------------------------------------------------------------------------- #
 
-def build_fetch_message_script(message_id: str) -> str:
+def build_fetch_message_script(
+    message_id: str,
+    *,
+    account: str,
+    mailbox: str,
+) -> str:
     """Return AppleScript that fetches an original message's metadata.
 
-    Searches across all accounts and mailboxes for a message with the given
-    ID.  Output format (``||``-delimited, single line)::
+    Looks up the message in ``mailbox`` of ``account`` — the caller is
+    expected to have resolved those via :func:`resolve_message_location`
+    (or an equivalent) before invoking. Passing the wrong scope is how
+    the "Message not found" error surfaces.
+
+    Output format (``||``-delimited, single line)::
 
         sender||to_list||cc_list||subject||date||body
 
     This is a read-only operation — safe to execute even in dry-run mode.
     """
+    acct = _escape_applescript_string(account)
+    mbox = _escape_applescript_string(mailbox)
     return f'''\
 tell application "Mail"
-    set targetMsg to first message of mailbox "INBOX" whose id is {message_id}
+    set targetMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}
     set msgSender to sender of targetMsg
 
     set toList to ""
@@ -188,6 +244,8 @@ def _build_quoted_body(
 def build_reply_script(
     *,
     message_id: str,
+    account: str,
+    mailbox: str,
     to: list[str],
     cc: list[str],
     subject: str,
@@ -240,9 +298,11 @@ def build_reply_script(
     else:
         finale = "save replyMsg\n    return (id of replyMsg) as string"
 
+    acct = _escape_applescript_string(account)
+    mbox = _escape_applescript_string(mailbox)
     script = f'''\
 tell application "Mail"
-    set originalMsg to first message of mailbox "INBOX" whose id is {message_id}
+    set originalMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}
     set replyMsg to reply originalMsg with opening window
     tell replyMsg
         set subject to {subj}
@@ -264,6 +324,8 @@ end tell'''
 def build_forward_script(
     *,
     message_id: str,
+    account: str,
+    mailbox: str,
     to: list[str],
     subject: str,
     body: str,
@@ -310,9 +372,11 @@ def build_forward_script(
     else:
         finale = "save fwdMsg\n    return (id of fwdMsg) as string"
 
+    acct = _escape_applescript_string(account)
+    mbox = _escape_applescript_string(mailbox)
     script = f'''\
 tell application "Mail"
-    set originalMsg to first message of mailbox "INBOX" whose id is {message_id}
+    set originalMsg to first message of mailbox {mbox} of account {acct} whose id is {message_id}
     set fwdMsg to forward originalMsg with opening window
     tell fwdMsg
         set subject to {subj}
@@ -329,13 +393,24 @@ end tell'''
 # High-level orchestration — reply
 # --------------------------------------------------------------------------- #
 
-def fetch_original_message(message_id: str) -> dict[str, str]:
+def fetch_original_message(
+    message_id: str,
+    *,
+    account: str,
+    mailbox: str,
+) -> dict[str, str]:
     """Fetch the original message's metadata via AppleScript.
 
-    This is a read-only operation.  Raises :class:`AppleScriptError` on
-    failure (including message not found).
+    The caller must provide the account + mailbox where the message
+    lives — use :func:`resolve_message_location` to derive them from
+    the ID. This is a read-only operation. Raises
+    :class:`AppleScriptError` on failure (including message not found).
     """
-    script = build_fetch_message_script(message_id)
+    script = build_fetch_message_script(
+        message_id,
+        account=account,
+        mailbox=mailbox,
+    )
     raw = run_applescript(script)
     return parse_fetch_message_output(raw)
 
@@ -394,6 +469,8 @@ def _compute_reply_recipients(
 def perform_reply(
     *,
     message_id: str,
+    account: str,
+    mailbox: str,
     original: dict[str, str],
     to: list[str],
     cc: list[str],
@@ -410,6 +487,8 @@ def perform_reply(
     """
     script = build_reply_script(
         message_id=message_id,
+        account=account,
+        mailbox=mailbox,
         to=to,
         cc=cc,
         subject=subject,
@@ -437,6 +516,8 @@ def perform_reply(
 def perform_forward(
     *,
     message_id: str,
+    account: str,
+    mailbox: str,
     original: dict[str, str],
     to: list[str],
     subject: str,
@@ -452,6 +533,8 @@ def perform_forward(
     """
     script = build_forward_script(
         message_id=message_id,
+        account=account,
+        mailbox=mailbox,
         to=to,
         subject=subject,
         body=body,
@@ -703,9 +786,14 @@ def register(app: typer.Typer) -> None:
                 )
                 raise typer.Exit(code=EXIT_USAGE_ERROR)
 
-        # --- Fetch original message (read-only, safe) --------------------
+        # --- Resolve message location + fetch original (read-only, safe) -
         try:
-            original = fetch_original_message(message_id)
+            msg_account, msg_mailbox = resolve_message_location(message_id)
+            original = fetch_original_message(
+                message_id,
+                account=msg_account,
+                mailbox=msg_mailbox,
+            )
         except AppleScriptError as exc:
             from mailctl.engine import normalize_error_text
             exc_str = normalize_error_text(str(exc))
@@ -803,6 +891,8 @@ def register(app: typer.Typer) -> None:
         try:
             result = perform_reply(
                 message_id=message_id,
+                account=msg_account,
+                mailbox=msg_mailbox,
                 original=original,
                 to=to_list,
                 cc=cc_list,
@@ -918,9 +1008,14 @@ def register(app: typer.Typer) -> None:
                 )
                 raise typer.Exit(code=EXIT_USAGE_ERROR)
 
-        # --- Fetch original message (read-only, safe) --------------------
+        # --- Resolve message location + fetch original (read-only, safe) -
         try:
-            original = fetch_original_message(message_id)
+            msg_account, msg_mailbox = resolve_message_location(message_id)
+            original = fetch_original_message(
+                message_id,
+                account=msg_account,
+                mailbox=msg_mailbox,
+            )
         except AppleScriptError as exc:
             from mailctl.engine import normalize_error_text
             exc_str = normalize_error_text(str(exc))
@@ -986,6 +1081,8 @@ def register(app: typer.Typer) -> None:
         try:
             result = perform_forward(
                 message_id=message_id,
+                account=msg_account,
+                mailbox=msg_mailbox,
                 original=original,
                 to=list(to),
                 subject=fwd_subject,

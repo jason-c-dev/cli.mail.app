@@ -1034,6 +1034,7 @@ class TestBuildReplyScript:
     def test_include_send_true_emits_send(self):
         script = build_reply_script(
             message_id="12345",
+            account="Acct", mailbox="INBOX",
             to=["a@x.com"], cc=[], subject="S", body="B",
             include_send=True,
         )
@@ -1042,6 +1043,7 @@ class TestBuildReplyScript:
     def test_include_send_false_omits_send(self):
         script = build_reply_script(
             message_id="12345",
+            account="Acct", mailbox="INBOX",
             to=["a@x.com"], cc=[], subject="S", body="B",
             include_send=False,
         )
@@ -1051,6 +1053,7 @@ class TestBuildReplyScript:
     def test_script_references_original_id(self):
         script = build_reply_script(
             message_id="12345",
+            account="Acct", mailbox="INBOX",
             to=["a@x.com"], cc=[], subject="S", body="B",
         )
         assert "12345" in script
@@ -1061,6 +1064,7 @@ class TestBuildForwardScript:
     def test_include_send_true_emits_send(self):
         script = build_forward_script(
             message_id="12345",
+            account="Acct", mailbox="INBOX",
             to=["a@x.com"], subject="S", body="B",
             include_send=True,
         )
@@ -1069,6 +1073,7 @@ class TestBuildForwardScript:
     def test_include_send_false_omits_send(self):
         script = build_forward_script(
             message_id="12345",
+            account="Acct", mailbox="INBOX",
             to=["a@x.com"], subject="S", body="B",
             include_send=False,
         )
@@ -1078,6 +1083,7 @@ class TestBuildForwardScript:
     def test_script_references_original_id(self):
         script = build_forward_script(
             message_id="12345",
+            account="Acct", mailbox="INBOX",
             to=["a@x.com"], subject="S", body="B",
         )
         assert "12345" in script
@@ -1115,6 +1121,100 @@ class TestParseFetchMessageOutput:
         assert result["subject"] == "Subject"
         assert result["date"] == "Date"
         assert result["body"] == "Body text"
+
+
+# --------------------------------------------------------------------------- #
+# Regression: issue #1 — do not hardcode "INBOX" in the fetch/reply/forward
+# AppleScript. Use the account + mailbox resolved from the message's actual
+# location so messages outside INBOX (All Mail, Archive, Exchange Inbox, etc.)
+# also resolve. See https://github.com/jason-c-dev/cli.mail.app/issues/1.
+# --------------------------------------------------------------------------- #
+
+
+class TestMessageLocationThreaded:
+    """Issue #1 regression: account + mailbox are templated, not hardcoded."""
+
+    def test_fetch_script_uses_provided_mailbox(self):
+        from mailctl.commands.reply_forward import build_fetch_message_script
+        script = build_fetch_message_script(
+            "42", account="Google", mailbox="[Gmail]/All Mail",
+        )
+        # Must reference the actual source mailbox, not the hardcoded INBOX.
+        assert 'mailbox "[Gmail]/All Mail" of account "Google"' in script
+        assert 'mailbox "INBOX" whose id is' not in script
+
+    def test_reply_script_uses_provided_mailbox(self):
+        script = build_reply_script(
+            message_id="42",
+            account="Exchange", mailbox="Inbox",
+            to=["a@x.com"], cc=[], subject="S", body="B",
+        )
+        assert 'mailbox "Inbox" of account "Exchange"' in script
+        assert 'mailbox "INBOX" whose id is' not in script
+
+    def test_forward_script_uses_provided_mailbox(self):
+        script = build_forward_script(
+            message_id="42",
+            account="Exchange", mailbox="Archive",
+            to=["a@x.com"], subject="S", body="B",
+        )
+        assert 'mailbox "Archive" of account "Exchange"' in script
+        assert 'mailbox "INBOX" whose id is' not in script
+
+
+class TestResolveMessageLocation:
+    """Issue #1: resolver maps a ROWID to (account_name, mailbox_path)."""
+
+    def test_resolves_imap_inbox(self, envelope_db):
+        from mailctl.commands.reply_forward import resolve_message_location
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+
+        mbox = envelope_db.add_mailbox(f"imap://{TEST_ACCOUNT_ALICE_UUID}/INBOX")
+        msg_id = envelope_db.add_message(
+            mailbox_rowid=mbox,
+            subject="hi", sender="a@x.com",
+        )
+        assert resolve_message_location(str(msg_id)) == ("Alice", "INBOX")
+
+    def test_resolves_gmail_all_mail(self, envelope_db):
+        from mailctl.commands.reply_forward import resolve_message_location
+        from tests.conftest import TEST_ACCOUNT_ALICE_UUID
+
+        # Gmail stores messages in [Gmail]/All Mail; AppleScript expects
+        # that literal path for the actual storage mailbox.
+        mbox = envelope_db.add_mailbox(
+            f"imap://{TEST_ACCOUNT_ALICE_UUID}/%5BGmail%5D/All%20Mail"
+        )
+        msg_id = envelope_db.add_message(
+            mailbox_rowid=mbox, subject="g", sender="a@x.com",
+        )
+        acct, path = resolve_message_location(str(msg_id))
+        assert acct == "Alice"
+        assert path == "[Gmail]/All Mail"
+
+    def test_resolves_exchange_inbox(self, envelope_db):
+        from mailctl.commands.reply_forward import resolve_message_location
+        from tests.conftest import TEST_ACCOUNT_BOB_UUID
+
+        mbox = envelope_db.add_mailbox(f"ews://{TEST_ACCOUNT_BOB_UUID}/Inbox")
+        msg_id = envelope_db.add_message(
+            mailbox_rowid=mbox, subject="x", sender="z@x.com",
+        )
+        assert resolve_message_location(str(msg_id)) == ("Bob", "Inbox")
+
+    def test_missing_message_raises_not_found(self, envelope_db):
+        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.errors import AppleScriptError
+
+        with pytest.raises(AppleScriptError, match="not found"):
+            resolve_message_location("99999999")
+
+    def test_non_numeric_id_raises_not_found(self, envelope_db):
+        from mailctl.commands.reply_forward import resolve_message_location
+        from mailctl.errors import AppleScriptError
+
+        with pytest.raises(AppleScriptError, match="not found"):
+            resolve_message_location("not-a-number")
 
 
 class TestBuildQuotedBody:
