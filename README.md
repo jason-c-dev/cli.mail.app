@@ -501,6 +501,24 @@ in-process for the run.
 
 ## Development
 
+### Bumping the version
+
+The version lives in two places (`pyproject.toml` and
+`src/mailctl/__init__.py`) so `import mailctl; mailctl.__version__`
+works without pulling in `importlib.metadata`. Keep them in lockstep
+via the bump script:
+
+```bash
+./scripts/bump-patch.sh            # 0.1.1 -> 0.1.2 (default)
+./scripts/bump-patch.sh --minor    # 0.1.2 -> 0.2.0
+./scripts/bump-patch.sh --major    # 0.2.0 -> 1.0.0
+```
+
+The script stages both files for you. Run it before each commit that
+ships a code change, then commit + push as usual. If you installed
+with `pipx install .` (non-editable), re-run
+`pipx install --force .` after each pull to pick up the new version.
+
 ### Running the tests
 
 ```bash

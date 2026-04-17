@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mailctl"
-version = "0.1.0"
+version = "0.1.1"
 description = "A command-line interface for Apple Mail.app on macOS"
 readme = "README.md"
 license = {text = "MIT"}
