@@ -164,20 +164,6 @@ def build_compose_script(
         )
     recip_block = "\n        ".join(recip_lines)
 
-    # --- Build sender binding (if --from given) -------------------------
-    if from_account:
-        # Mail.app's `sender` property on an outgoing message is a string
-        # that must match one of the account's email addresses.  We also
-        # keep a human-readable reference to the account name for the
-        # output summary.
-        sender_block = (
-            f'set senderAcct to account {_escape_applescript_string(from_account)}\n'
-            f'        set senderEmail to item 1 of (email addresses of senderAcct)\n'
-            f'        set sender of newMessage to senderEmail as string'
-        )
-    else:
-        sender_block = "-- no explicit sender account"
-
     # --- Build attachments block ----------------------------------------
     attach_lines: list[str] = []
     for path in attachments:
@@ -206,14 +192,66 @@ def build_compose_script(
         # in Mail.app, but save it anyway for safety.
         finale = "save newMessage\n    return (id of newMessage) as string"
 
+    # --- Build outgoing-message properties + sender hook -----------------
+    # The previous implementation had two bugs that between them leaked
+    # an empty draft into the default account whenever --from failed:
+    #
+    # 1. `account <name>` referenced inside `tell newMessage` resolves
+    #    against the outgoing message (which has no `account` property)
+    #    instead of Mail, giving -1728. The draft is already created.
+    # 2. `item 1 of (email addresses of senderAcct)` fails inline with
+    #    -1700 because the email-addresses collection doesn't
+    #    materialise without an intermediate binding.
+    #
+    # Early attempt to fix this passed `sender:` in `make new outgoing
+    # message` properties, but that caused Mail.app to auto-save the
+    # draft immediately — and a saved draft is read-only for recipient
+    # writes, so the recipient block never landed.
+    #
+    # The working pattern:
+    # - Resolve `senderEmail` at the very top of the script, BEFORE
+    #   creating any message. Account-resolution failures now error
+    #   out before any draft exists.
+    # - Create the outgoing message WITHOUT `sender:` so it stays as
+    #   a transient outgoing message.
+    # - Add recipients and attachments.
+    # - Set `sender` after recipients are in place (no auto-save
+    #   until we call `save`).
+    # - Save explicitly.
+    # - Wrap the post-create block in try/on-error/delete-newMessage
+    #   so any failure after creation cleans up its partial draft.
+    if from_account:
+        acct_literal = _escape_applescript_string(from_account)
+        preamble = (
+            f'    set senderAccount to account {acct_literal}\n'
+            f'    set senderEmails to email addresses of senderAccount\n'
+            f'    if (count of senderEmails) = 0 then\n'
+            f'        error "Account " & {acct_literal} & " has no email addresses."\n'
+            f'    end if\n'
+            f'    set senderEmail to first item of senderEmails as text\n'
+        )
+        set_sender_line = "set sender of newMessage to senderEmail"
+    else:
+        preamble = ""
+        set_sender_line = "-- no explicit sender account"
+
+    make_props = f'{{subject:{subj}, content:{body_expr}, visible:true}}'
+
     script = f'''\
 tell application "Mail"
-    set newMessage to make new outgoing message with properties {{subject:{subj}, content:{body_expr}, visible:true}}
-    tell newMessage
-        {sender_block}
-        {recip_block if recip_block else "-- no recipients (unexpected)"}
-        {attach_block}
-    end tell
+{preamble}    set newMessage to make new outgoing message with properties {make_props}
+    try
+        tell newMessage
+            {recip_block if recip_block else "-- no recipients (unexpected)"}
+            {attach_block}
+        end tell
+        {set_sender_line}
+    on error errStr number errNum
+        try
+            delete newMessage
+        end try
+        error errStr number errNum
+    end try
     {finale}
 end tell'''
     return script

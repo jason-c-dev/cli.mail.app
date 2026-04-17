@@ -783,6 +783,95 @@ class TestBuildComposeScript:
         assert "attachment" in script
 
 
+# --------------------------------------------------------------------------- #
+# Regression: issue #3 — --from must resolve the account BEFORE the draft is
+# created, so a failed lookup doesn't leak a recipient-less draft.
+# See https://github.com/jason-c-dev/cli.mail.app/issues/3.
+# --------------------------------------------------------------------------- #
+
+
+class TestFromAccountNoLeak:
+    """Issue #3 regression: sender resolved before draft creation."""
+
+    def test_account_lookup_precedes_make_new(self):
+        """If --from fails, AppleScript errors BEFORE `make new outgoing message`
+        runs — so no partial draft is left in the default account."""
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            from_account="Google",
+            include_send=False,
+        )
+        idx_lookup = script.find('account "Google"')
+        idx_make = script.find("make new outgoing message")
+        assert idx_lookup != -1, "sender lookup missing"
+        assert idx_make != -1, "make-new missing"
+        assert idx_lookup < idx_make, (
+            "account lookup must precede draft creation so a failed "
+            "lookup doesn't leak a blank draft"
+        )
+
+    def test_set_sender_follows_recipients(self):
+        """`set sender` must come AFTER the recipient block. If it came
+        before (or inside `make new outgoing message properties`),
+        Mail.app auto-saves the draft and the later recipient writes
+        silently fail — landing an empty-to draft in the --from account."""
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            from_account="Google",
+            include_send=False,
+        )
+        idx_recip = script.find("to recipient")
+        idx_set_sender = script.find("set sender of newMessage")
+        assert idx_recip != -1, "recipient block missing"
+        assert idx_set_sender != -1, "set sender missing"
+        assert idx_recip < idx_set_sender, (
+            "recipients must be added before `set sender`; otherwise "
+            "Mail.app auto-saves and the recipient writes fail"
+        )
+        # `sender:` must NOT appear in the make-new properties dict —
+        # that's what triggers the auto-save.
+        assert "sender:senderEmail" not in script
+
+    def test_partial_draft_rollback_on_error(self):
+        """If anything after `make new outgoing message` fails, the
+        partial draft must be deleted before the error propagates."""
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            from_account="Google",
+            include_send=False,
+        )
+        assert "delete newMessage" in script
+        assert "on error" in script
+
+    def test_no_inline_item_1_email_addresses(self):
+        """The bare `item 1 of (email addresses of X)` pattern fails with
+        AppleScript -1700 because indexing into Mail-internal collections
+        doesn't materialise inline. Use `first item of emails as text`
+        via an intermediate binding."""
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            from_account="Google",
+            include_send=False,
+        )
+        assert "item 1 of (email addresses" not in script
+        assert "first item of senderEmails" in script
+
+    def test_without_from_omits_sender_property(self):
+        """Without --from the script must not touch sender at all."""
+        script = build_compose_script(
+            to=["a@x.com"], cc=[], bcc=[],
+            subject="S", body="B",
+            include_send=False,
+        )
+        assert "sender:" not in script
+        assert "senderAccount" not in script
+        assert "senderEmail" not in script
+
+
 class TestParseAccountNamesOutput:
     def test_empty(self):
         assert parse_account_names_output("") == []
