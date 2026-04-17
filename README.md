@@ -323,6 +323,15 @@ accepted for CLI compatibility but errors out; use `--subject` or
 Create a draft or (with `--dangerously-send`) send an email. See
 [The safety model](#the-safety-model) above.
 
+`compose` prints the draft's canonical message id on success — the same
+id space every other subcommand uses (`drafts list`, `messages show`,
+`messages mark`, `messages delete`). No id translation needed.
+
+**Silent by default.** Drafts are saved to the Drafts folder (visible
+in `mailctl drafts list` and on any synced device — iPhone, iCloud
+Mail, etc.) without popping Mail.app's compose window. Pass `--show`
+if you want the GUI preview on macOS.
+
 ```bash
 # Draft with inline body
 mailctl compose --to friend@example.com --subject "Hi" --body "Hello!"
@@ -340,8 +349,11 @@ cat report.md | mailctl compose --to friend@example.com --subject "Report"
 mailctl compose --to friend@example.com --subject "Photos" --body "Enjoy" \
     --attach ~/Pictures/one.jpg --attach ~/Pictures/two.jpg
 
-# Send from a specific account
+# Send from a specific account (name as shown by `mailctl accounts list`)
 mailctl compose --to friend@example.com --subject "Hi" --body "..." --from Personal
+
+# Pop Mail.app's compose window for visual review
+mailctl compose --to friend@example.com --subject "Hi" --body "..." --show
 
 # Actually send (with confirmation prompt)
 mailctl compose --to friend@example.com --subject "Hi" --body "..." --dangerously-send
@@ -352,7 +364,14 @@ mailctl compose --to friend@example.com --subject "Hi" --body "..." --dangerousl
 
 ### `mailctl reply`
 
-Reply to an existing message. Creates a draft by default.
+Reply to an existing message. Creates a draft by default. `<id>` can
+be any message from `messages list`, `messages show`, or `messages
+search` regardless of which mailbox it lives in (INBOX, All Mail,
+Archive, Exchange Inbox, ...).
+
+Same silent-by-default behaviour as `compose`: the reply draft lands
+in the Drafts folder without popping Mail.app's compose window. Pass
+`--show` for the GUI preview.
 
 ```bash
 # Reply (to sender only)
@@ -361,16 +380,24 @@ mailctl reply 12345 --body "Thanks!"
 # Reply-all
 mailctl reply 12345 --all --body "Thanks everyone!"
 
+# Show the compose window on macOS
+mailctl reply 12345 --body "Thanks!" --show
+
 # Actually send the reply
 mailctl reply 12345 --body "Thanks!" --dangerously-send
 ```
 
 ### `mailctl forward`
 
-Forward a message to a new set of recipients. Creates a draft by default.
+Forward a message to a new set of recipients. Creates a draft by
+default; same silent-by-default + `--show` behaviour as `compose`
+and `reply`.
 
 ```bash
 mailctl forward 12345 --to friend@example.com --body "FYI"
+
+# Show the compose window on macOS
+mailctl forward 12345 --to friend@example.com --body "FYI" --show
 ```
 
 ### `mailctl drafts list` and `mailctl drafts edit`
@@ -384,17 +411,20 @@ mailctl drafts list --json
 
 # Scope to one account
 mailctl drafts list --account Personal
-
-# Edit a draft (modify any field)
-mailctl drafts edit 9876 --subject "New subject"
-mailctl drafts edit 9876 --body-file updated.md
-mailctl drafts edit 9876 --add-to another@example.com
-mailctl drafts edit 9876 --remove-to wrong@example.com
 ```
 
+**Heads-up on `drafts edit`.** Mail.app's AppleScript API treats a
+*saved* draft as read-only for its content-bearing properties
+(subject, body, recipients, attachments). `drafts edit` returns a
+clear error and points at
+[issue #8](https://github.com/jason-c-dev/cli.mail.app/issues/8).
+Workaround: `mailctl messages delete <id>` the draft (moves to Trash)
+and `mailctl compose` a fresh one with the edits, or open the draft
+in Mail.app's GUI and edit there. Read/flagged state CAN be changed
+via `mailctl messages mark <id> --read/--flagged`.
+
 `drafts edit` never sends — there is no send path on this command by
-design. To send a draft after editing, use the Mail.app UI or
-`mailctl compose` a fresh message.
+design.
 
 ### `mailctl messages mark / move / delete`
 
@@ -410,7 +440,7 @@ mailctl messages mark 12345 --unread
 mailctl messages mark 12345 --flagged
 mailctl messages mark 12345 --unflagged
 
-# Move to another mailbox (same account)
+# Move within the message's own account (see note below for cross-account)
 mailctl messages move 12345 --to Archive
 
 # Delete — default moves to Trash; restore from Mail.app if needed
@@ -418,6 +448,21 @@ mailctl messages delete 12345
 
 # Permanent delete — requires confirmation
 mailctl messages delete 12345 --permanent
+```
+
+**`messages move` scope.** Mail.app's `move` verb can't cross
+accounts, so `--to <mailbox>` is resolved inside the source message's
+own account only. If the target doesn't exist there, the CLI
+pre-validates against the Envelope Index and errors with the list of
+mailboxes that DO exist in that account — read the list, pick a real
+target, or tell the user. For moving content between accounts the
+workaround is to forward the message to the other account's address
+(with the user's approval):
+
+```bash
+mailctl forward 12345 --to other-account@example.com --body "moving to other account"
+# then on the user's confirmation:
+mailctl forward 12345 --to other-account@example.com --body "..." --dangerously-send --yes
 ```
 
 ## Architecture
