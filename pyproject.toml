@@ -1,3 +1,9 @@
+# Python packaging config for mailctl. Not harness-generated noise —
+# required for `pipx install .` and `pip install -e .`. The harness
+# commit prefix only reflects who authored the initial scaffold; the
+# contents (build backend, deps, `mailctl` entry point) are what make
+# the tool installable.
+
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"

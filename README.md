@@ -1,5 +1,10 @@
 # mailctl
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://www.apple.com/macos/)
+[![Mail.app](https://img.shields.io/badge/Mail.app-Envelope%20Index%20V10-important.svg)](#architecture)
+
 A fast, safe command-line interface for Apple Mail.app on macOS.
 
 `mailctl` talks to Mail.app's underlying SQLite index for reads, keeping
@@ -535,4 +540,5 @@ reference points — the safety-model tests under
 
 ## License
 
-MIT. See `LICENSE`.
+Released under the [MIT License](LICENSE) — see the `LICENSE` file for
+the full text.
